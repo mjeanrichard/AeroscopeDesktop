@@ -394,7 +394,7 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public async Task Send_settings_writes_the_default_registers_to_scope_state()
+    public async Task Send_settings_writes_the_default_settings_to_scope_state()
     {
         await ConnectToScopeAsync();
 
@@ -402,7 +402,7 @@ public class MainViewModelTests
 
         var write = Assert.Single(_link.Writes);
         Assert.Equal(AeroscopeGatt.ScopeState, write.Characteristic);
-        Assert.Equal(new ScopeRegisters().ToPacket(), write.Packet);
+        Assert.Equal(new ScopeSettings().ToRegisters().ToPacket(), write.Packet);
         Assert.Equal(LogKind.State, _viewModel.Log.Last().Kind);
     }
 

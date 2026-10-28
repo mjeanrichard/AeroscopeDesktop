@@ -43,7 +43,7 @@ public partial class MainWindow : Window
         });
     }
 
-    /// <summary>Wheel scrolls through the history (up is back in time); Ctrl+wheel zooms the roll view.</summary>
+    /// <summary>Wheel scrolls through the history (up is back in time), Shift+wheel in larger steps; Ctrl+wheel zooms the roll view.</summary>
     private void OnScreenMouseWheel(object sender, MouseWheelEventArgs e)
     {
         var acquisition = _viewModel.Acquisition;
@@ -57,7 +57,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            acquisition.Scroll(e.Delta > 0 ? -1 : 1);
+            acquisition.Scroll(e.Delta > 0 ? -1 : 1, large: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         }
 
         e.Handled = true;

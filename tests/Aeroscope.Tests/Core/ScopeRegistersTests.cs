@@ -23,6 +23,62 @@ public class ScopeRegistersTests
     }
 
     [Fact]
+    public void Triggered_settings_capture_only_the_512_samples_sent()
+    {
+        var registers = new ScopeSettings().ToRegisters();
+
+        Assert.Equal(0x06, registers.WriteDepth);
+        Assert.Equal(0x06, registers.ReadDepth);
+        Assert.Equal(256, registers.TriggerPosition - registers.ReadStartAddress);
+    }
+
+    [Theory]
+    [InlineData(1024, 0)]
+    [InlineData(2048, 1)]
+    [InlineData(4096, 2)]
+    public void Larger_frames_match_the_packets_the_real_scope_accepted(int size, int write)
+    {
+        // Capture 24: depth 7, 8 and 9 with the trigger in the middle of the record.
+        var recorded = Captures.Load(Captures.FrameSizes).Where(p => p.Channel == CaptureChannel.State).ElementAt(write).Bytes;
+
+        Assert.Equal(recorded, new ScopeSettings { FrameSize = size }.ToRegisters().ToPacket());
+    }
+
+    [Fact]
+    public void Only_the_supported_frame_sizes_are_accepted()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ScopeSettings { FrameSize = 1000 });
+    }
+
+    [Fact]
+    public void Roll_frames_are_16_samples_whatever_the_frame_size()
+    {
+        var settings = new ScopeSettings { FrameSize = 4096, TimeBase = TimeBase.All.First(t => t.IsRoll) };
+
+        Assert.Equal(RollHistory.FrameLength, settings.FrameLength);
+        Assert.Equal(0x800, settings.ToRegisters().TriggerPosition);
+    }
+
+    [Fact]
+    public void Roll_settings_keep_the_android_memory_layout()
+    {
+        var registers = new ScopeSettings { TimeBase = TimeBase.All.First(t => t.IsRoll) }.ToRegisters();
+
+        Assert.Equal(0x09, registers.WriteDepth);
+        Assert.Equal(0x800, registers.TriggerPosition);
+        Assert.Equal(0x700, registers.ReadStartAddress);
+    }
+
+    [Fact]
+    public void Settings_packet_matches_the_one_the_real_scope_accepted()
+    {
+        // The 512-sample record at 500 ns/div, written in capture 23.
+        var recorded = Captures.Load(Captures.WriteDepth512).Where(p => p.Channel == CaptureChannel.State).Skip(1).First().Bytes;
+
+        Assert.Equal(recorded, new ScopeSettings().ToRegisters().ToPacket());
+    }
+
+    [Fact]
     public void Defaults_follow_the_android_app()
     {
         var registers = new ScopeRegisters();

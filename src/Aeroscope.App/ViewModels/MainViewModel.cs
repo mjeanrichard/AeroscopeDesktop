@@ -26,6 +26,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly Dictionary<ulong, DeviceItem> _devicesByAddress = [];
     private IScopeLink? _connection;
     private DateTimeOffset _lastDataReceived;
+    private DateTimeOffset _frameStarted;
 
     public MainViewModel()
         : this(new ScopeScanner(), async address => await ScopeConnection.ConnectAsync(address), PostTo(Application.Current.Dispatcher))
@@ -245,6 +246,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void OnDataPacket(byte[] packet, DateTimeOffset received)
     {
         _lastDataReceived = received;
+        if (packet[0] != 0)
+        {
+            _frameStarted = received; // a frame's first packet starts with its size code
+        }
+
         if (LogDataPackets)
         {
             AddLog(LogEntry.Packet(LogKind.Data, packet));
@@ -257,7 +263,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         Scope.Apply(frame);
         AddLog(LogEntry.Message(LogKind.Info, $"Frame: {Scope.LastFrame}"));
-        _ = Acquisition.OnFrameAsync(frame, _lastDataReceived);
+        _ = Acquisition.OnFrameAsync(frame, _lastDataReceived, _frameStarted);
     }
 
     private void OnAdvertisement(ScopeAdvertisement ad)

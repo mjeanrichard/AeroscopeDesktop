@@ -231,6 +231,23 @@ public class RollHistoryTests
     }
 }
 
+public class ScreenTraceTests
+{
+    [Fact]
+    public void Window_keeps_the_samples_between_two_times_with_their_statistics()
+    {
+        var waveform = new Waveform([0, 1, 2, 3, 4, 5, 6, 7], SampleInterval: 1, FirstSampleTime: -4);
+
+        var screen = ScreenTrace.Window(waveform, -1, 1);
+
+        var trace = Assert.Single(screen.Traces);
+        Assert.Equal([3.0, 4, 5], trace.Volts);
+        Assert.Equal(-1, trace.FirstSampleTime);
+        Assert.Equal(3, screen.Minimum);
+        Assert.Equal(5, screen.Maximum);
+    }
+}
+
 public class FrameHistoryTests
 {
     private static RecordedFrame Recorded(int index) => new(

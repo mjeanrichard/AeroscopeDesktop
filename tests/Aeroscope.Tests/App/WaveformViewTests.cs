@@ -162,6 +162,22 @@ public class WaveformViewTests
     }
 
     [Fact]
+    public void Panning_moves_the_trace_and_the_trigger_time()
+    {
+        // 2 V from 0 to 2 µs; at 1 µs/div with 2 µs at the centre it spans x = 150-250, not 250-350.
+        var pixels = Render(view =>
+        {
+            view.Traces = [new Waveform(Enumerable.Repeat(2.0, 201).ToArray(), 10e-9, 0)];
+            view.CentreSeconds = 2e-6;
+        });
+
+        Assert.True(AnyInColumn(pixels, 200, 98, 102, IsTrace));
+        Assert.False(AnyInColumn(pixels, 300, 0, Height - 1, IsTrace));
+        Assert.True(AnyInColumn(pixels, 150, 0, 4, IsTrigger)); // t = 0 is now 2 divisions left of the centre
+        Assert.False(AnyInColumn(pixels, Width / 2, 0, 4, IsTrigger));
+    }
+
+    [Fact]
     public void Offset_and_scale_move_the_trace()
     {
         var pixels = Render(view =>
@@ -198,15 +214,43 @@ public class WaveformViewTests
     }
 
     [Fact]
+    public void Frame_trigger_level_is_a_second_marker_in_blue()
+    {
+        static bool IsFrameTrigger(Color c) => c.B > 200 && c.G is > 140 and < 200 && c.R < 120;
+
+        var pixels = Render(view =>
+        {
+            view.TriggerLevelVolts = 2; // y = 100
+            view.FrameTriggerLevelVolts = -1; // y = 250
+        });
+
+        Assert.True(AnyInColumn(pixels, Width - 2, 246, 254, IsFrameTrigger));
+        Assert.True(AnyInColumn(pixels, Width - 2, 96, 104, IsTrigger));
+        Assert.False(AnyInColumn(pixels, Width - 2, 96, 104, IsFrameTrigger));
+    }
+
+    [Fact]
+    public void No_frame_trigger_marker_without_a_frame_level()
+    {
+        static bool IsBlue(Color c) => c.B > 200 && c.R < 120;
+
+        var pixels = Render(view => view.TriggerLevelVolts = 2);
+
+        Assert.False(AnyInColumn(pixels, Width - 2, 0, Height - 1, IsBlue));
+    }
+
+    [Fact]
     public void Roll_mode_hides_the_trigger_markers()
     {
         var pixels = Render(view =>
         {
             view.TriggerLevelVolts = 2;
+            view.FrameTriggerLevelVolts = -1;
             view.ShowTrigger = false;
         });
 
         Assert.False(AnyInColumn(pixels, Width - 2, 0, Height - 1, IsTrigger));
+        Assert.False(AnyInColumn(pixels, Width - 2, 246, 254, c => c.B > 200 && c.R < 120));
         Assert.False(AnyInColumn(pixels, Width / 2, 0, 4, IsTrigger));
         Assert.True(AnyInColumn(pixels, 2, 196, 204, IsGround)); // the ground marker stays
     }

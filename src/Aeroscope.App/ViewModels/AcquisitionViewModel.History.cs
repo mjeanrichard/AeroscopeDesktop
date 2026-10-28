@@ -7,10 +7,13 @@ namespace Aeroscope.App.ViewModels;
 
 /// <summary>
 /// History: every frame received while running is kept. Triggered frames are stepped through
-/// one at a time; roll mode is one long recording that scrolls in time and can be zoomed out
+/// one at a time (they are separate snapshots: most of the time between them was never
+/// captured); roll mode is one long recording that scrolls in time and can be zoomed out
 /// beyond the time base. While live, the screen follows the newest data; moving back detaches
 /// it (acquisition carries on) until Live is pressed or the end is reached again.
 /// The history position is a frame index for triggered frames and seconds for roll mode.
+/// A frame larger than 512 samples is shown whole; it can be zoomed in down to the time base
+/// and panned.
 /// </summary>
 public partial class AcquisitionViewModel
 {
@@ -23,17 +26,55 @@ public partial class AcquisitionViewModel
     private DateTimeOffset _rollViewStart;
     private double _rollSecondsPerDivision = TimeBase.Default.SecondsPerDivision;
 
+    // Zoom into a frame wider than the screen: time base multiples shown (null = the whole
+    // frame), and the time at the screen centre.
+    private int? _frameZoom;
+    private double _framePan;
+
     /// <summary>The screen follows the newest data.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(GoLiveCommand))]
     public partial bool IsLive { get; private set; } = true;
 
-    /// <summary>Horizontal scale of the screen: the time base, or in roll mode the zoomed-out view.</summary>
-    public double ViewSecondsPerDivision => IsRoll ? _rollSecondsPerDivision : TimeBase.SecondsPerDivision;
+    /// <summary>Horizontal scale of the screen: the shown frame's time base times the zoom, or in roll mode the zoomed-out view.</summary>
+    public double ViewSecondsPerDivision => IsRoll ? _rollSecondsPerDivision : ViewTimeBase.SecondsPerDivision * FrameZoom;
 
-    public string HorizontalText => IsRoll && _rollSecondsPerDivision != TimeBase.SecondsPerDivision
-        ? $"{TimeBase}, view {Units.Seconds(_rollSecondsPerDivision)}/div"
-        : TimeBase.ToString();
+    public string HorizontalText
+    {
+        get
+        {
+            var timeBase = IsRoll ? TimeBase : ViewTimeBase;
+            return ViewSecondsPerDivision != timeBase.SecondsPerDivision
+                ? $"{timeBase}, view {Units.Seconds(ViewSecondsPerDivision)}/div"
+                : timeBase.ToString();
+        }
+    }
+
+    /// <summary>Time at the screen centre: 0 (the trigger) unless panned within a frame.</summary>
+    public double ViewCentreSeconds => CanPan ? _framePan : 0;
+
+    /// <summary>Zoomed into a frame wider than the screen.</summary>
+    public bool CanPan => !IsRoll && FrameZoom < FrameScreens;
+
+    /// <summary>Pan position: the time from the frame's left end to the screen's, in seconds.</summary>
+    public double FramePanPosition
+    {
+        get => _framePan + FramePanMaximum / 2;
+        set
+        {
+            _framePan = Math.Clamp(value, 0, FramePanMaximum) - FramePanMaximum / 2;
+            RefreshScreen();
+        }
+    }
+
+    public double FramePanMaximum => (FrameScreens - FrameZoom) * ScreenSeconds(1);
+
+    public double FramePanViewport => ScreenSeconds(FrameZoom);
+
+    public double FramePanSmallChange => ViewSecondsPerDivision;
+
+    /// <summary>The trigger level the shown frame was taken with; null in roll mode or without a frame.</summary>
+    public double? FrameTriggerLevelVolts => !IsRoll && _frameIndex >= 0 ? _frames[_frameIndex].Settings.TriggerLevelVolts : null;
 
     public bool HasHistory => IsRoll ? _roll.SampleCount > 0 : _frames.Count > 0;
 
@@ -43,8 +84,10 @@ public partial class AcquisitionViewModel
 
     public double HistoryViewport => IsRoll ? RollSpan.TotalSeconds : 1;
 
+    /// <summary>A division, or a frame.</summary>
     public double HistorySmallChange => IsRoll ? _rollSecondsPerDivision : 1;
 
+    /// <summary>A screen, or 10 frames.</summary>
     public double HistoryLargeChange => IsRoll ? RollSpan.TotalSeconds : 10;
 
     public double HistoryPosition
@@ -95,8 +138,19 @@ public partial class AcquisitionViewModel
 
     private double RollDuration => _roll.Start is { } first ? (_roll.End!.Value - first).TotalSeconds : 0;
 
-    /// <summary>Moves through the history by small steps (a division, or a frame); negative is back in time.</summary>
-    public void Scroll(int steps) => HistoryPosition += steps * HistorySmallChange;
+    /// <summary>The time base of the frame shown: it may predate a time base change.</summary>
+    private TimeBase ViewTimeBase => _frameIndex >= 0 ? _frames[_frameIndex].Settings.TimeBase : TimeBase;
+
+    /// <summary>How many screens wide the frame shown is: 1 for 512 samples, 8 for 4096.</summary>
+    private int FrameScreens => _frameIndex >= 0 ? Math.Max(1, _frames[_frameIndex].Frame.Samples.Length / ScopeSettings.FrameSizes[0]) : 1;
+
+    /// <summary>Screens of the frame shown at once: from 1 (the time base) to all of them.</summary>
+    private int FrameZoom => Math.Min(_frameZoom ?? FrameScreens, FrameScreens);
+
+    private double ScreenSeconds(int screens) => screens * TimeBase.Divisions * ViewTimeBase.SecondsPerDivision;
+
+    /// <summary>Moves through the history by small or large steps (see above); negative is back in time.</summary>
+    public void Scroll(int steps, bool large = false) => HistoryPosition += steps * (large ? HistoryLargeChange : HistorySmallChange);
 
     [RelayCommand(CanExecute = nameof(CanGoLive))]
     private void GoLive()
@@ -117,17 +171,40 @@ public partial class AcquisitionViewModel
         RefreshScreen();
     }
 
+    /// <summary>Roll mode: towards the time base. A frame wider than the screen: halves the time shown, about the screen centre.</summary>
     [RelayCommand(CanExecute = nameof(CanZoomIn))]
-    private void ZoomIn() => Zoom(RollViewScales.LastOrDefault(s => s < _rollSecondsPerDivision, TimeBase.SecondsPerDivision));
+    private void ZoomIn()
+    {
+        if (IsRoll)
+        {
+            ZoomRoll(RollViewScales.LastOrDefault(s => s < _rollSecondsPerDivision, TimeBase.SecondsPerDivision));
+        }
+        else
+        {
+            _frameZoom = FrameZoom / 2;
+            RefreshScreen();
+        }
+    }
 
-    private bool CanZoomIn() => IsRoll && _rollSecondsPerDivision > TimeBase.SecondsPerDivision;
+    private bool CanZoomIn() => IsRoll ? _rollSecondsPerDivision > TimeBase.SecondsPerDivision : FrameZoom > 1;
 
     [RelayCommand(CanExecute = nameof(CanZoomOut))]
-    private void ZoomOut() => Zoom(RollViewScales.First(s => s > _rollSecondsPerDivision));
+    private void ZoomOut()
+    {
+        if (IsRoll)
+        {
+            ZoomRoll(RollViewScales.First(s => s > _rollSecondsPerDivision));
+        }
+        else
+        {
+            _frameZoom = FrameZoom * 2 >= FrameScreens ? null : FrameZoom * 2;
+            RefreshScreen();
+        }
+    }
 
-    private bool CanZoomOut() => IsRoll && _rollSecondsPerDivision < RollViewScales[^1];
+    private bool CanZoomOut() => IsRoll ? _rollSecondsPerDivision < RollViewScales[^1] : FrameZoom < FrameScreens;
 
-    private void Zoom(double secondsPerDivision)
+    private void ZoomRoll(double secondsPerDivision)
     {
         var centre = _rollViewStart + RollSpan / 2;
         _rollSecondsPerDivision = Math.Max(secondsPerDivision, TimeBase.SecondsPerDivision);
@@ -143,26 +220,30 @@ public partial class AcquisitionViewModel
         RefreshScreen();
     }
 
-    private void Record(ScopeFrame frame, DateTimeOffset received)
+    /// <param name="settings">The settings the frame was taken with.</param>
+    private void Record(ScopeFrame frame, ScopeSettings settings, DateTimeOffset received)
     {
         if (IsRoll)
         {
-            _roll.Add(frame, Settings, received);
+            _roll.Add(frame, settings, received);
         }
         else
         {
-            var dropped = _frames.Add(new RecordedFrame(frame, Settings, received));
+            var dropped = _frames.Add(new RecordedFrame(frame, settings, received));
             _frameIndex = Math.Max(0, _frameIndex - dropped);
         }
 
         RefreshScreen();
     }
 
-    private void OnSettingsChanged(bool timeBaseChanged)
+    /// <param name="viewChanged">The time base or frame size changed: back to the whole of the newest data.</param>
+    private void OnSettingsChanged(bool viewChanged)
     {
-        if (timeBaseChanged)
+        if (viewChanged)
         {
             _rollSecondsPerDivision = TimeBase.SecondsPerDivision;
+            _frameZoom = null;
+            _framePan = 0;
             IsLive = true;
         }
 
@@ -182,9 +263,10 @@ public partial class AcquisitionViewModel
                 _frameIndex = _frames.Count - 1;
             }
 
-            Screen = _frameIndex >= 0 ? ScreenTrace.From(_frames[_frameIndex].ToWaveform()) : null;
+            Screen = FrameScreen();
         }
 
+        OnPropertyChanged(nameof(FrameTriggerLevelVolts));
         OnPropertyChanged(nameof(HasHistory));
         OnPropertyChanged(nameof(HistoryMaximum));
         OnPropertyChanged(nameof(HistoryViewport));
@@ -194,8 +276,35 @@ public partial class AcquisitionViewModel
         OnPropertyChanged(nameof(HistoryText));
         OnPropertyChanged(nameof(ViewSecondsPerDivision));
         OnPropertyChanged(nameof(HorizontalText));
+        OnPropertyChanged(nameof(ViewCentreSeconds));
+        OnPropertyChanged(nameof(CanPan));
+        OnPropertyChanged(nameof(FramePanMaximum));
+        OnPropertyChanged(nameof(FramePanViewport));
+        OnPropertyChanged(nameof(FramePanSmallChange));
+        OnPropertyChanged(nameof(FramePanPosition));
         ZoomInCommand.NotifyCanExecuteChanged();
         ZoomOutCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>The frame shown: whole, or the part on screen when zoomed in.</summary>
+    private ScreenTrace? FrameScreen()
+    {
+        if (_frameIndex < 0)
+        {
+            return null;
+        }
+
+        var waveform = _frames[_frameIndex].ToWaveform();
+        if (!CanPan)
+        {
+            _framePan = 0;
+            return ScreenTrace.From(waveform);
+        }
+
+        var limit = FramePanMaximum / 2;
+        _framePan = Math.Clamp(_framePan, -limit, limit);
+        var half = ScreenSeconds(FrameZoom) / 2;
+        return ScreenTrace.Window(waveform, _framePan - half, _framePan + half);
     }
 
     private ScreenTrace? RollScreen()

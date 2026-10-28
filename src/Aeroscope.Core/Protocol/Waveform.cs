@@ -9,7 +9,7 @@ public sealed record Waveform(double[] Volts, double SampleInterval, double Firs
         var dt = settings.TimeBase.SampleInterval;
 
         // The subtrigger shifts the trace right by subtrigger/64 of a sample to remove trigger jitter.
-        var firstSampleTime = (frame.SubTrigger / 64.0 - ScopeSettings.TriggerSampleIndex) * dt;
+        var firstSampleTime = (frame.SubTrigger / 64.0 - ScopeSettings.TriggerIndex(frame.Samples.Length)) * dt;
         var volts = frame.Samples.Select(code => settings.ToVolts(code)).ToArray();
         return new Waveform(volts, dt, firstSampleTime);
     }

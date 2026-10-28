@@ -192,6 +192,47 @@ public sealed class ScopeHardwareTests : IDisposable
     }
 
     [HardwareFact]
+    public async Task Frame_size_2048_streams_2048_sample_frames()
+    {
+        using var connection = await ScopeConnection.ConnectAsync(Address);
+        var acquisition = new Aeroscope.App.ViewModels.AcquisitionViewModel((id, payload) => connection.WriteAsync(id, payload));
+        var assembler = new FrameAssembler();
+        var lengths = new List<int>();
+        var twoFrames = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        assembler.FrameCompleted += (_, frame) =>
+        {
+            lengths.Add(frame.Samples.Length);
+            acquisition.OnFrameAsync(frame).Wait();
+            if (lengths.Count(l => l == 2048) == 2)
+            {
+                twoFrames.TrySetResult();
+            }
+        };
+        connection.DataPacketReceived += (_, packet) =>
+        {
+            lock (assembler)
+            {
+                assembler.AddPacket(packet);
+            }
+        };
+
+        acquisition.FrameSize = 2048;
+        await WaitForPowerOnAsync(connection);
+        await acquisition.OnPowerChangedAsync(true);
+
+        await acquisition.RunCommand.ExecuteAsync(null);
+        await twoFrames.Task.WaitAsync(ReplyTimeout);
+        await acquisition.StopCommand.ExecuteAsync(null);
+
+        lock (assembler)
+        {
+            Assert.All(lengths.SkipWhile(l => l == RollHistory.FrameLength), l => Assert.Equal(2048, l)); // after any roll leftovers
+        }
+
+        Assert.Equal(2048, Assert.Single(acquisition.Screen!.Traces).Volts.Length);
+    }
+
+    [HardwareFact]
     public async Task Roll_mode_single_fills_the_screen_then_stops()
     {
         using var connection = await ScopeConnection.ConnectAsync(Address);

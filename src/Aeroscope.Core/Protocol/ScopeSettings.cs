@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Aeroscope.Core.Protocol;
 
 public enum TriggerEdge { Rising, Falling, Both }
@@ -9,8 +11,10 @@ public enum TriggerEdge { Rising, Falling, Both }
 /// </summary>
 public sealed record ScopeSettings
 {
-    /// <summary>Default trigger position minus default read start: where t = 0 falls in a 512-sample frame.</summary>
-    public const int TriggerSampleIndex = 0x800 - 0x700;
+    /// <summary>Triggered frame sizes: depth codes 6-9 (2^(code + 3) samples), all verified (capture 24).</summary>
+    public static IReadOnlyList<int> FrameSizes { get; } = [512, 1024, 2048, 4096];
+
+    private readonly int _frameSize = 512;
 
     private const ushort DacMidScale = 0x8000;
 
@@ -24,6 +28,16 @@ public sealed record ScopeSettings
     public bool DcCoupled { get; init; } = true;
 
     public TimeBase TimeBase { get; init; } = TimeBase.Default;
+
+    /// <summary>Samples per triggered frame, one of <see cref="FrameSizes"/>; 512 is one screen.</summary>
+    public int FrameSize
+    {
+        get => _frameSize;
+        init => _frameSize = FrameSizes.Contains(value) ? value : throw new ArgumentOutOfRangeException(nameof(value), value, "Not a frame size");
+    }
+
+    /// <summary>The frame length the scope sends with these settings.</summary>
+    public int FrameLength => TimeBase.IsRoll ? RollHistory.FrameLength : FrameSize;
 
     public TriggerEdge TriggerEdge { get; init; } = TriggerEdge.Rising;
 
@@ -71,12 +85,35 @@ public sealed record ScopeSettings
 
     public double ToVolts(double code) => (code - ZeroCode) * Range.VoltsPerCode;
 
-    public ScopeRegisters ToRegisters() => new()
+    /// <summary>Where t = 0 (the trigger) falls in a triggered frame: the middle, whatever its size.</summary>
+    public static int TriggerIndex(int frameLength) => frameLength / 2;
+
+    /// <summary>
+    /// Triggered frames capture just the samples sent (the frame size), trigger in the middle.
+    /// The Android app's defaults fill the whole 4096-sample memory (trigger at 0x800, read from
+    /// 0x700) for a 512-sample frame, 8 times slower: 16.5 s instead of 2.1 s per frame at
+    /// 200 ms/div (capture 23). Roll mode keeps the Android defaults it was verified with.
+    /// </summary>
+    private byte DepthCode => (byte)(BitOperations.Log2((uint)FrameSize) - 3);
+
+    public ScopeRegisters ToRegisters()
     {
-        TriggerControl = TriggerControl,
-        TriggerLevel = TriggerLevelCode,
-        FrontEnd = (byte)((DcCoupled ? 0x80 : 0x00) | Range.FrontEndCode),
-        SamplerControl = TimeBase.SamplerCode,
-        OffsetDac = OffsetDac,
-    };
+        var registers = new ScopeRegisters
+        {
+            TriggerControl = TriggerControl,
+            TriggerLevel = TriggerLevelCode,
+            FrontEnd = (byte)((DcCoupled ? 0x80 : 0x00) | Range.FrontEndCode),
+            SamplerControl = TimeBase.SamplerCode,
+            OffsetDac = OffsetDac,
+        };
+        return TimeBase.IsRoll
+            ? registers
+            : registers with
+            {
+                WriteDepth = DepthCode,
+                ReadDepth = DepthCode,
+                TriggerPosition = (ushort)TriggerIndex(FrameSize),
+                ReadStartAddress = 0,
+            };
+    }
 }

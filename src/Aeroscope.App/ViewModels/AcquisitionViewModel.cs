@@ -22,9 +22,10 @@ public partial class AcquisitionViewModel : ObservableObject
     private readonly TimeProvider _time;
     private bool _pushing;
     private bool _pushPending;
+    private readonly SettingsTimeline _timeline = new();
 
     /// <param name="write">Writes a payload to a characteristic (Scope In or Scope State).</param>
-    /// <param name="time">Clock for frame times and the button repeat filter; the system clock if null.</param>
+    /// <param name="time">Clock for frame times; the system clock if null.</param>
     public AcquisitionViewModel(Func<ushort, byte[], Task> write, TimeProvider? time = null)
     {
         _write = write;
@@ -68,6 +69,15 @@ public partial class AcquisitionViewModel : ObservableObject
     {
         get => Settings.TimeBase;
         set => Update(Settings with { TimeBase = value });
+    }
+
+    public IReadOnlyList<int> FrameSizes => ScopeSettings.FrameSizes;
+
+    /// <summary>Samples per triggered frame: beyond 512 a frame is wider than the screen.</summary>
+    public int FrameSize
+    {
+        get => Settings.FrameSize;
+        set => Update(Settings with { FrameSize = value });
     }
 
     public TriggerEdge TriggerEdge
@@ -142,7 +152,7 @@ public partial class AcquisitionViewModel : ObservableObject
     {
         StartRecording();
         RunMode = RunMode.Running;
-        await SendAsync("R");
+        await StartAcquisitionAsync();
     }
 
     [RelayCommand(CanExecute = nameof(IsReady))]
@@ -163,20 +173,36 @@ public partial class AcquisitionViewModel : ObservableObject
         await StopAcquisitionAsync();
         StartRecording();
         RunMode = RunMode.Single;
-        await SendAsync("R");
+        await StartAcquisitionAsync();
     }
 
     /// <param name="received">When the frame's last packet arrived; now if null.</param>
-    public async Task OnFrameAsync(ScopeFrame frame, DateTimeOffset? received = null)
+    /// <param name="started">When its first packet arrived; <paramref name="received"/> if null.</param>
+    public async Task OnFrameAsync(ScopeFrame frame, DateTimeOffset? received = null, DateTimeOffset? started = null)
     {
         // The screen freezes on stop, even if a frame already on its way arrives after it.
-        // After a time base change the scope sends one more frame of the old kind; drop that too.
-        if (RunMode == RunMode.Stopped || IsRoll != (frame.Samples.Length == RollHistory.FrameLength))
+        if (RunMode == RunMode.Stopped)
         {
             return;
         }
 
-        Record(frame, received ?? _time.GetUtcNow());
+        // Settings written while running may come too late for a frame; one whose length doesn't
+        // fit its settings (roll or triggered, frame size) was taken with the newest.
+        var end = received ?? _time.GetUtcNow();
+        var isRollFrame = frame.Samples.Length == RollHistory.FrameLength;
+        var settings = _timeline.FrameArrived(started ?? end, end);
+        if (settings.FrameLength != frame.Samples.Length)
+        {
+            settings = _timeline.Latest;
+        }
+
+        // After a time base change the scope sends one more frame of the old kind; drop it.
+        if (IsRoll != isRollFrame)
+        {
+            return;
+        }
+
+        Record(frame, settings, end);
         if (RunMode == RunMode.Single && (!IsRoll || _roll.CurrentSegmentCount >= TimeBase.SamplesOnScreen))
         {
             RunMode = RunMode.Stopped;
@@ -215,7 +241,7 @@ public partial class AcquisitionViewModel : ObservableObject
         if (RunMode == RunMode.Running)
         {
             _roll.StartSegment(); // the link was down: leave a gap
-            await SendAsync("R");
+            await StartAcquisitionAsync();
         }
     }
 
@@ -232,9 +258,9 @@ public partial class AcquisitionViewModel : ObservableObject
             return;
         }
 
-        var timeBaseChanged = settings.TimeBase != Settings.TimeBase;
+        var viewChanged = settings.TimeBase != Settings.TimeBase || settings.FrameSize != Settings.FrameSize;
         Settings = settings;
-        OnSettingsChanged(timeBaseChanged);
+        OnSettingsChanged(viewChanged);
 
         // Most displayed values derive from the settings; refresh them all.
         OnPropertyChanged(string.Empty);
@@ -260,7 +286,13 @@ public partial class AcquisitionViewModel : ObservableObject
             do
             {
                 _pushPending = false;
-                await _write(AeroscopeGatt.ScopeState, Settings.ToRegisters().ToPacket());
+                var settings = Settings;
+                var write = _write(AeroscopeGatt.ScopeState, settings.ToRegisters().ToPacket());
+
+                // Time the acknowledgement where it arrives, not when this resumes on the UI thread.
+                var acknowledged = await write.ContinueWith(_ => _time.GetUtcNow(), TaskContinuationOptions.ExecuteSynchronously);
+                await write;
+                _timeline.Written(settings, acknowledged);
             }
             while (_pushPending);
         }
@@ -268,6 +300,13 @@ public partial class AcquisitionViewModel : ObservableObject
         {
             _pushing = false;
         }
+    }
+
+    /// <summary>R: a fresh acquisition, so its first frame already uses the written settings.</summary>
+    private Task StartAcquisitionAsync()
+    {
+        _timeline.Started(_time.GetUtcNow());
+        return SendAsync("R");
     }
 
     private async Task StopAcquisitionAsync()

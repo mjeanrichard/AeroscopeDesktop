@@ -325,6 +325,7 @@ public class AcquisitionViewModelTests
             switch (packet.Channel)
             {
                 case CaptureChannel.State:
+                    _clock.Set(Epoch + packet.Time);
                     _viewModel.TimeBase = TimeBase.All.Single(t => t.SamplerCode == packet.Bytes[4]);
                     break;
                 case CaptureChannel.Data:
@@ -474,8 +475,136 @@ public class AcquisitionViewModelTests
         Assert.True(_viewModel.IsLive);
     }
 
+    // Frame size
+
+    /// <summary>The frames of a size from capture 24 (500 ns/div, the 1 MHz sine).</summary>
+    private static List<ScopeFrame> SizedFrames(int size)
+    {
+        var assembler = new FrameAssembler();
+        var frames = new List<ScopeFrame>();
+        assembler.FrameCompleted += (_, frame) => frames.Add(frame);
+        foreach (var packet in Captures.Packets(Captures.FrameSizes, CaptureChannel.Data))
+        {
+            assembler.AddPacket(packet);
+        }
+
+        return frames.Where(f => f.Samples.Length == size).ToList();
+    }
+
+    private async Task Showing4096Async()
+    {
+        _viewModel.FrameSize = 4096;
+        await RunningAsync();
+        await _viewModel.OnFrameAsync(SizedFrames(4096)[0]);
+    }
+
+    private double Spd => _viewModel.TimeBase.SecondsPerDivision;
+
     [Fact]
-    public void Zoom_is_for_roll_mode_only()
+    public async Task Frame_size_is_written_to_the_scope()
+    {
+        await MakeReadyAsync();
+
+        _viewModel.FrameSize = 2048;
+
+        Assert.Equal(new ScopeSettings { FrameSize = 2048 }.ToRegisters().ToPacket(), Assert.Single(SettingsWrites));
+    }
+
+    [Fact]
+    public async Task A_large_frame_is_shown_whole()
+    {
+        await Showing4096Async();
+
+        Assert.Equal(4096, Trace.Volts.Length);
+        Assert.Equal(8 * Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.Equal("500 ns/div, view 4.00 µs/div", _viewModel.HorizontalText);
+        Assert.False(_viewModel.CanPan);
+        Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
+        Assert.True(_viewModel.ZoomInCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Zooming_into_a_large_frame_shows_the_middle_then_pans()
+    {
+        await Showing4096Async();
+
+        _viewModel.ZoomInCommand.Execute(null); // 4 screens
+        _viewModel.ZoomInCommand.Execute(null); // 2
+        _viewModel.ZoomInCommand.Execute(null); // 1: the time base
+
+        Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
+        Assert.Equal(Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.True(_viewModel.CanPan);
+        Assert.Equal(0, _viewModel.ViewCentreSeconds);
+        Assert.InRange(Trace.Volts.Length, 500, 502); // one screen: 500 sample intervals
+        Assert.Equal(70 * Spd, _viewModel.FramePanMaximum, precision: 15); // 7 more screens to pan over
+        Assert.Equal(35 * Spd, _viewModel.FramePanPosition, precision: 15); // centred
+
+        _viewModel.FramePanPosition = 0; // the frame's left end
+
+        Assert.Equal(-35 * Spd, _viewModel.ViewCentreSeconds, precision: 15);
+        Assert.Equal(-40 * Spd, Trace.FirstSampleTime, tolerance: _viewModel.TimeBase.SampleInterval);
+        Assert.Equal(Trace.Volts.Max(), _viewModel.Screen!.Maximum); // readouts over what is shown
+
+        _viewModel.ZoomOutCommand.Execute(null); // 2 screens, still at the left end
+        Assert.Equal(-30 * Spd, _viewModel.ViewCentreSeconds, precision: 15);
+    }
+
+    [Fact]
+    public async Task Zooming_out_returns_to_the_whole_frame()
+    {
+        await Showing4096Async();
+        _viewModel.ZoomInCommand.Execute(null);
+        _viewModel.FramePanPosition = 0;
+
+        _viewModel.ZoomOutCommand.Execute(null);
+
+        Assert.False(_viewModel.CanPan);
+        Assert.Equal(0, _viewModel.ViewCentreSeconds);
+        Assert.Equal(4096, Trace.Volts.Length);
+    }
+
+    [Fact]
+    public async Task Frame_size_change_shows_the_whole_frame_again()
+    {
+        await Showing4096Async();
+        _viewModel.ZoomInCommand.Execute(null);
+
+        _viewModel.FrameSize = 2048;
+        await _viewModel.OnFrameAsync(SizedFrames(2048)[0]);
+
+        Assert.Equal(4 * Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.False(_viewModel.CanPan);
+    }
+
+    [Fact]
+    public async Task A_512_sample_frame_cannot_be_zoomed()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+
+        Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
+        Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
+        Assert.False(_viewModel.CanPan);
+    }
+
+    [Fact]
+    public async Task Each_frame_in_the_history_is_shown_at_its_own_size()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+        _viewModel.FrameSize = 4096;
+        await _viewModel.OnFrameAsync(SizedFrames(4096)[0]);
+        _viewModel.ZoomInCommand.Execute(null);
+
+        _viewModel.HistoryPosition = 0;
+
+        Assert.Equal(_viewModel.TimeBase.SecondsPerDivision, _viewModel.ViewSecondsPerDivision); // the 512-sample frame: one screen
+        Assert.False(_viewModel.CanPan);
+    }
+
+    [Fact]
+    public void Zoom_needs_roll_mode_or_a_frame_wider_than_the_screen()
     {
         Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
         Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
@@ -533,6 +662,176 @@ public class AcquisitionViewModelTests
 
         _viewModel.GoLiveCommand.Execute(null);
         Assert.Equal("Frame 4 of 4, 12:00:01.0 (live)", _viewModel.HistoryText);
+    }
+
+    [Fact]
+    public async Task A_frame_keeps_the_trigger_level_it_was_taken_with()
+    {
+        Assert.Null(_viewModel.FrameTriggerLevelVolts); // no frame yet
+        await RunningAsync();
+        await HumFramesAsync(1);
+        Assert.Equal(0, _viewModel.FrameTriggerLevelVolts);
+
+        _viewModel.TriggerLevelVolts = 1;
+        Assert.Equal(0, _viewModel.FrameTriggerLevelVolts); // the frame shown predates the change
+
+        await HumFramesAsync(1);
+        Assert.Equal(1, _viewModel.FrameTriggerLevelVolts);
+
+        _viewModel.HistoryPosition = 0;
+        Assert.Equal(0, _viewModel.FrameTriggerLevelVolts);
+    }
+
+    /// <summary>
+    /// Replays a capture with its timing: its settings writes through the view model (acknowledged
+    /// at their recorded times), its R as Run, its frames with their first and last packet times.
+    /// Returns the frames as received, in history order.
+    /// </summary>
+    private async Task<List<ScopeFrame>> ReplayWithWritesAsync(string capture)
+    {
+        await MakeReadyAsync();
+        var assembler = new FrameAssembler();
+        var frames = new List<ScopeFrame>();
+        var started = Epoch;
+        assembler.FrameCompleted += (_, frame) =>
+        {
+            frames.Add(frame);
+            _viewModel.OnFrameAsync(frame, _clock.GetUtcNow(), started).Wait();
+        };
+
+        foreach (var packet in Captures.Load(capture))
+        {
+            _clock.Set(Epoch + packet.Time);
+            switch (packet.Channel)
+            {
+                case CaptureChannel.State:
+                    var settings = Captures.SettingsFrom(packet.Bytes);
+                    _viewModel.Range = settings.Range;
+                    _viewModel.OffsetVolts = settings.OffsetVolts;
+                    break;
+                case CaptureChannel.In when packet.Bytes[0] == 'R':
+                    await _viewModel.RunCommand.ExecuteAsync(null);
+                    break;
+                case CaptureChannel.Data:
+                    if (packet.Bytes[0] != 0)
+                    {
+                        started = _clock.GetUtcNow();
+                    }
+
+                    assembler.AddPacket(packet.Bytes);
+                    break;
+            }
+        }
+
+        Assert.Equal(frames.Count, (int)_viewModel.HistoryMaximum + 1);
+        return frames;
+    }
+
+    [Fact]
+    public async Task Frames_are_kept_with_the_range_they_were_taken_with()
+    {
+        // Capture 20: a 2 V peak-to-peak sine while the range switches between 1 and 2 V/div.
+        // Converted with the range it was taken with, every frame shows 2 V.
+        var frames = await ReplayWithWritesAsync(Captures.SettingsWhileRunning);
+
+        Assert.Equal(65, frames.Count);
+        for (var i = 0; i < frames.Count; i++)
+        {
+            _viewModel.HistoryPosition = i;
+            Assert.InRange(_viewModel.Screen!.PeakToPeak, 1.9, 2.2);
+        }
+    }
+
+    [Fact]
+    public async Task Frames_are_kept_with_the_offset_they_were_taken_with()
+    {
+        // Capture 16: offset and range rewritten while running. The floating input reads the same
+        // voltage whatever the offset, so only frames converted with their own settings agree.
+        var frames = await ReplayWithWritesAsync(Captures.OffsetDac);
+
+        var means = new List<double>();
+        for (var i = 0; i < frames.Count; i++)
+        {
+            if (!frames[i].Samples.Contains((byte)255)) // the last offset saturates the ADC
+            {
+                _viewModel.HistoryPosition = i;
+                means.Add(Trace.Mean);
+            }
+        }
+
+        Assert.Equal(15, means.Count); // 18 frames, the last 3 saturated
+        Assert.All(means, m => Assert.InRange(m, 0.25, 0.38)); // +0.36 V at 1 V/div, +0.26 V at 100 mV/div
+    }
+
+    [Fact]
+    public async Task A_frame_already_waiting_when_a_write_arrives_keeps_the_old_settings()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+
+        _clock.Advance(TimeSpan.FromMilliseconds(40)); // after the previous frame
+        _viewModel.TriggerLevelVolts = 1;
+        _clock.Advance(TimeSpan.FromMilliseconds(1)); // the next frame comes in the same connection event
+        await _viewModel.OnFrameAsync(HumFrame());
+        Assert.Equal(0, _viewModel.FrameTriggerLevelVolts);
+
+        await HumFramesAsync(1);
+        Assert.Equal(1, _viewModel.FrameTriggerLevelVolts);
+    }
+
+    [Fact]
+    public async Task Run_after_a_change_while_stopped_has_no_stale_frame()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+        await _viewModel.StopCommand.ExecuteAsync(null);
+
+        _viewModel.TriggerLevelVolts = 1;
+        await _viewModel.RunCommand.ExecuteAsync(null);
+        await HumFramesAsync(1);
+
+        Assert.Equal(1, _viewModel.FrameTriggerLevelVolts);
+    }
+
+    [Fact]
+    public async Task Of_several_writes_a_frame_gets_the_newest_in_time()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+        _clock.Advance(TimeSpan.FromMilliseconds(40));
+        _viewModel.TriggerLevelVolts = 1;
+        _clock.Advance(TimeSpan.FromMilliseconds(40));
+        _viewModel.TriggerLevelVolts = 2;
+
+        _clock.Advance(TimeSpan.FromMilliseconds(1));
+        await _viewModel.OnFrameAsync(HumFrame());
+
+        Assert.Equal(1, _viewModel.FrameTriggerLevelVolts); // too late for the second write only
+    }
+
+    [Fact]
+    public async Task Roll_mode_has_no_frame_trigger_level()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+
+        _viewModel.TimeBase = TimeBase.All.First(t => t.IsRoll);
+
+        Assert.Null(_viewModel.FrameTriggerLevelVolts);
+    }
+
+    [Fact]
+    public async Task A_frame_is_shown_in_its_own_time_base()
+    {
+        await RunningAsync();
+        await HumFramesAsync(2);
+        var recorded = _viewModel.TimeBase;
+
+        // Until a frame with the new time base arrives, the screen keeps the old scale.
+        _viewModel.TimeBase = TimeBase.All.Single(t => t.Name == "1 ms");
+
+        Assert.Equal(recorded.SecondsPerDivision, _viewModel.ViewSecondsPerDivision);
+        Assert.Equal(recorded.ToString(), _viewModel.HorizontalText);
     }
 
     [Fact]

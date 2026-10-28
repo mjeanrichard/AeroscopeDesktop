@@ -99,9 +99,11 @@ public class TimeBaseTests
 public class ScopeSettingsTests
 {
     [Fact]
-    public void Defaults_produce_the_android_registers()
+    public void Defaults_produce_the_android_registers_with_a_512_sample_record()
     {
-        Assert.Equal(new ScopeRegisters().ToPacket(), new ScopeSettings().ToRegisters().ToPacket());
+        var record512 = new ScopeRegisters { WriteDepth = 0x06, TriggerPosition = 0x100, ReadStartAddress = 0 };
+
+        Assert.Equal(record512.ToPacket(), new ScopeSettings().ToRegisters().ToPacket());
     }
 
     [Theory]
@@ -234,7 +236,7 @@ public class WaveformTests
         Assert.All(frames.Take(4), frame =>
         {
             var waveform = Waveform.From(frame, settings);
-            var trigger = ScopeSettings.TriggerSampleIndex;
+            var trigger = ScopeSettings.TriggerIndex(frame.Samples.Length);
             Assert.Equal(0, waveform.TimeOf(trigger), tolerance: waveform.SampleInterval);
             Assert.True(waveform.Volts[(trigger - 8)..(trigger - 2)].Average() < 0, "below the level just before the trigger");
             Assert.True(waveform.Volts[(trigger + 2)..(trigger + 8)].Average() > 0, "above the level just after the trigger");
@@ -284,7 +286,7 @@ public class WaveformTests
             switch (packet.Channel)
             {
                 case CaptureChannel.State:
-                    settings = SettingsFrom(packet.Bytes);
+                    settings = Captures.SettingsFrom(packet.Bytes);
                     skipNext = waveforms.Count > 0;
                     break;
                 case CaptureChannel.Data:
@@ -294,17 +296,5 @@ public class WaveformTests
         }
 
         return waveforms;
-    }
-
-    private static ScopeSettings SettingsFrom(byte[] registers)
-    {
-        var range = VoltageRange.All.Single(r => r.FrontEndCode == (registers[3] & 0x7F));
-        var dac = registers[11] << 8 | registers[12];
-        return new ScopeSettings
-        {
-            Range = range,
-            TimeBase = TimeBase.All.Single(t => t.SamplerCode == registers[4]),
-            OffsetVolts = (dac - 0x8000) * range.VoltsPerDacCount,
-        };
     }
 }

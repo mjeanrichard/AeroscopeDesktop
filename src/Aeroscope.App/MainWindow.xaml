@@ -9,6 +9,7 @@
         d:DataContext="{d:DesignInstance vm:MainViewModel}"
         Title="Aeroscope" Height="760" Width="1280">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
         <Style TargetType="Button">
             <Setter Property="Padding" Value="12,4" />
             <Setter Property="Margin" Value="0,0,6,0" />
@@ -108,15 +109,24 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <controls:WaveformView Grid.Row="0" Grid.Column="0"
-                                           Traces="{Binding Screen.Traces}"
-                                           VoltsPerDivision="{Binding Range.VoltsPerDivision}"
-                                           SecondsPerDivision="{Binding ViewSecondsPerDivision}"
-                                           MouseWheel="OnScreenMouseWheel"
-                                           ToolTip="Wheel: scroll through the history. Ctrl+wheel: zoom (roll mode)."
-                                           CentreVolts="{Binding OffsetVolts}"
-                                           TriggerLevelVolts="{Binding TriggerLevelVolts}"
-                                           ShowTrigger="{Binding HasTrigger}" />
+                    <DockPanel Grid.Row="0" Grid.Column="0">
+                        <!-- Pans within a frame wider than the screen while zoomed in -->
+                        <ScrollBar DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0"
+                                   Visibility="{Binding CanPan, Converter={StaticResource Visible}}"
+                                   Minimum="0" Maximum="{Binding FramePanMaximum}" ViewportSize="{Binding FramePanViewport}"
+                                   SmallChange="{Binding FramePanSmallChange}" LargeChange="{Binding FramePanViewport}"
+                                   Value="{Binding FramePanPosition}" ToolTip="Pan within the frame" />
+                        <controls:WaveformView Traces="{Binding Screen.Traces}"
+                                               VoltsPerDivision="{Binding Range.VoltsPerDivision}"
+                                               SecondsPerDivision="{Binding ViewSecondsPerDivision}"
+                                               CentreSeconds="{Binding ViewCentreSeconds}"
+                                               MouseWheel="OnScreenMouseWheel"
+                                               ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with."
+                                               CentreVolts="{Binding OffsetVolts}"
+                                               TriggerLevelVolts="{Binding TriggerLevelVolts}"
+                                               FrameTriggerLevelVolts="{Binding FrameTriggerLevelVolts}"
+                                               ShowTrigger="{Binding HasTrigger}" />
+                    </DockPanel>
 
                     <!-- History: scroll back through everything received while running -->
                     <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,6,0,0">
@@ -125,9 +135,9 @@
                         <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
                                 ToolTip="Follow the newest data" />
                         <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="8,0" Margin="6,0,0,0"
-                                ToolTip="Zoom in (roll mode)" />
+                                ToolTip="Zoom in: roll mode, or a frame wider than the screen" />
                         <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="8,0" Margin="6,0,0,0"
-                                ToolTip="Zoom out over the recording (roll mode)" />
+                                ToolTip="Zoom out: over the roll recording, or to the whole frame" />
                         <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
                         <ScrollBar Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
                                    Minimum="0" Maximum="{Binding HistoryMaximum}" ViewportSize="{Binding HistoryViewport}"
@@ -175,6 +185,10 @@
 
                             <TextBlock Text="Horizontal" Style="{StaticResource SectionHeader}" />
                             <ComboBox ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" />
+                            <TextBlock Text="Frame size" Style="{StaticResource Label}" />
+                            <ComboBox ItemsSource="{Binding FrameSizes}" SelectedItem="{Binding FrameSize}" ItemStringFormat="{}{0} samples"
+                                      IsEnabled="{Binding HasTrigger}"
+                                      ToolTip="Samples per frame. 512 fills the screen; larger frames cover more time and are shown whole (zoom in with +), but take longer to capture and send (4096: about 2 s per frame)." />
 
                             <TextBlock Text="Trigger" Style="{StaticResource SectionHeader}" />
                             <StackPanel IsEnabled="{Binding HasTrigger}">

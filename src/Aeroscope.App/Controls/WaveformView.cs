@@ -7,6 +7,7 @@ namespace Aeroscope.App.Controls;
 /// <summary>
 /// Scope screen: 10 x 8 division grid, the trace, a ground marker (0 V) on the left,
 /// the trigger level on the right and the trigger time at the top (unless <see cref="ShowTrigger"/> is off).
+/// A second, blue level marker shows the trigger level the shown frame was taken with.
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
@@ -16,6 +17,8 @@ public sealed class WaveformView : FrameworkElement
     public static readonly DependencyProperty CentreVoltsProperty = Register(nameof(CentreVolts), 0.0);
     public static readonly DependencyProperty TriggerLevelVoltsProperty = Register(nameof(TriggerLevelVolts), 0.0);
     public static readonly DependencyProperty ShowTriggerProperty = Register(nameof(ShowTrigger), true);
+    public static readonly DependencyProperty FrameTriggerLevelVoltsProperty = Register<double?>(nameof(FrameTriggerLevelVolts), null);
+    public static readonly DependencyProperty CentreSecondsProperty = Register(nameof(CentreSeconds), 0.0);
 
     private const double MarkerSize = 7;
 
@@ -26,6 +29,8 @@ public sealed class WaveformView : FrameworkElement
     private static readonly Brush GroundBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x4C, 0xC9, 0x7A)));
     private static readonly Brush TriggerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF2, 0x8C, 0x38)));
     private static readonly Pen TriggerLevelPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0xF2, 0x8C, 0x38))), 1) { DashStyle = DashStyles.Dash });
+    private static readonly Brush FrameTriggerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x5C, 0xA8, 0xF2)));
+    private static readonly Pen FrameTriggerLevelPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0x5C, 0xA8, 0xF2))), 1) { DashStyle = DashStyles.Dash });
 
     /// <summary>The traces to draw, with times relative to the screen centre.</summary>
     public IReadOnlyList<Waveform>? Traces
@@ -44,6 +49,13 @@ public sealed class WaveformView : FrameworkElement
     {
         get => (double)GetValue(SecondsPerDivisionProperty);
         set => SetValue(SecondsPerDivisionProperty, value);
+    }
+
+    /// <summary>Time at the horizontal centre of the screen: 0 (the trigger) unless panned.</summary>
+    public double CentreSeconds
+    {
+        get => (double)GetValue(CentreSecondsProperty);
+        set => SetValue(CentreSecondsProperty, value);
     }
 
     /// <summary>Voltage at the vertical centre of the screen (the offset).</summary>
@@ -66,6 +78,13 @@ public sealed class WaveformView : FrameworkElement
         set => SetValue(ShowTriggerProperty, value);
     }
 
+    /// <summary>The trigger level the shown frame was taken with; null hides its marker.</summary>
+    public double? FrameTriggerLevelVolts
+    {
+        get => (double?)GetValue(FrameTriggerLevelVoltsProperty);
+        set => SetValue(FrameTriggerLevelVoltsProperty, value);
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         var bounds = new Rect(RenderSize);
@@ -75,13 +94,18 @@ public sealed class WaveformView : FrameworkElement
             return;
         }
 
-        var map = new ScreenMapping(bounds.Width, bounds.Height, VoltsPerDivision, SecondsPerDivision, CentreVolts);
+        var map = new ScreenMapping(bounds.Width, bounds.Height, VoltsPerDivision, SecondsPerDivision, CentreVolts, CentreSeconds);
         dc.PushClip(new RectangleGeometry(bounds));
 
         DrawGrid(dc, map);
         if (ShowTrigger)
         {
-            DrawTriggerLevel(dc, map);
+            if (FrameTriggerLevelVolts is { } frameLevel)
+            {
+                DrawTriggerLevel(dc, map, frameLevel, FrameTriggerLevelPen, FrameTriggerBrush);
+            }
+
+            DrawTriggerLevel(dc, map, TriggerLevelVolts, TriggerLevelPen, TriggerBrush); // the current level on top
         }
 
         foreach (var waveform in Traces ?? [])
@@ -151,11 +175,11 @@ public sealed class WaveformView : FrameworkElement
         dc.DrawGeometry(null, TracePen, geometry);
     }
 
-    private void DrawTriggerLevel(DrawingContext dc, ScreenMapping map)
+    private static void DrawTriggerLevel(DrawingContext dc, ScreenMapping map, double volts, Pen line, Brush marker)
     {
-        var y = Math.Clamp(map.Y(TriggerLevelVolts), 0, map.Height);
-        dc.DrawLine(TriggerLevelPen, new Point(0, y), new Point(map.Width, y));
-        dc.DrawGeometry(TriggerBrush, null, Triangle(new Point(map.Width, y), new Vector(-MarkerSize, 0)));
+        var y = Math.Clamp(map.Y(volts), 0, map.Height);
+        dc.DrawLine(line, new Point(0, y), new Point(map.Width, y));
+        dc.DrawGeometry(marker, null, Triangle(new Point(map.Width, y), new Vector(-MarkerSize, 0)));
     }
 
     private static void DrawGroundMarker(DrawingContext dc, ScreenMapping map)

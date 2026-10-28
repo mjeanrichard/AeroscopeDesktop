@@ -10,7 +10,7 @@ namespace Aeroscope.App.Controls;
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
-    public static readonly DependencyProperty WaveformProperty = Register<Waveform?>(nameof(Waveform), null);
+    public static readonly DependencyProperty TracesProperty = Register<IReadOnlyList<Waveform>?>(nameof(Traces), null);
     public static readonly DependencyProperty VoltsPerDivisionProperty = Register(nameof(VoltsPerDivision), 1.0);
     public static readonly DependencyProperty SecondsPerDivisionProperty = Register(nameof(SecondsPerDivision), 1e-6);
     public static readonly DependencyProperty CentreVoltsProperty = Register(nameof(CentreVolts), 0.0);
@@ -27,10 +27,11 @@ public sealed class WaveformView : FrameworkElement
     private static readonly Brush TriggerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF2, 0x8C, 0x38)));
     private static readonly Pen TriggerLevelPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0xF2, 0x8C, 0x38))), 1) { DashStyle = DashStyles.Dash });
 
-    public Waveform? Waveform
+    /// <summary>The traces to draw, with times relative to the screen centre.</summary>
+    public IReadOnlyList<Waveform>? Traces
     {
-        get => (Waveform?)GetValue(WaveformProperty);
-        set => SetValue(WaveformProperty, value);
+        get => (IReadOnlyList<Waveform>?)GetValue(TracesProperty);
+        set => SetValue(TracesProperty, value);
     }
 
     public double VoltsPerDivision
@@ -83,7 +84,7 @@ public sealed class WaveformView : FrameworkElement
             DrawTriggerLevel(dc, map);
         }
 
-        if (Waveform is { } waveform)
+        foreach (var waveform in Traces ?? [])
         {
             DrawTrace(dc, map, waveform);
         }

@@ -9,26 +9,22 @@ namespace Aeroscope.App.ViewModels;
 public enum RunMode { Stopped, Running, Single }
 
 /// <summary>
-/// Acquisition settings, run control and the latest waveform. Settings changes are
+/// Acquisition settings, run control and what the screen shows. Settings changes are
 /// written to the scope immediately (coalesced while a write is in flight); the
-/// scope applies them from the next frame on.
+/// scope applies them from the next frame on. Everything received while running is kept
+/// (see the History part) and can be scrolled back through.
 /// </summary>
 public partial class AcquisitionViewModel : ObservableObject
 {
-    /// <summary>The device button's "BD"s came in bursts 0.3-0.5 s apart (probably repeats while held); only the first of a burst toggles.</summary>
-    public static readonly TimeSpan ButtonRepeatGap = TimeSpan.FromSeconds(1);
-
     private const string NoValue = "–";
 
     private readonly Func<ushort, byte[], Task> _write;
     private readonly TimeProvider _time;
-    private readonly RollBuffer _roll = new();
     private bool _pushing;
     private bool _pushPending;
-    private DateTimeOffset _lastButton = DateTimeOffset.MinValue;
 
     /// <param name="write">Writes a payload to a characteristic (Scope In or Scope State).</param>
-    /// <param name="time">Clock for the button repeat filter; the system clock if null.</param>
+    /// <param name="time">Clock for frame times and the button repeat filter; the system clock if null.</param>
     public AcquisitionViewModel(Func<ushort, byte[], Task> write, TimeProvider? time = null)
     {
         _write = write;
@@ -54,7 +50,7 @@ public partial class AcquisitionViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MaximumText), nameof(MinimumText), nameof(PeakToPeakText), nameof(MeanText))]
-    public partial Waveform? Waveform { get; private set; }
+    public partial ScreenTrace? Screen { get; private set; }
 
     public VoltageRange Range
     {
@@ -118,20 +114,22 @@ public partial class AcquisitionViewModel : ObservableObject
         set => TriggerLevelVolts = OffsetVolts + value * Range.VoltsPerDivision;
     }
 
-    /// <summary>False in roll mode, where the scope streams continuously and ignores the trigger.</summary>
-    public bool HasTrigger => !TimeBase.IsRoll;
+    /// <summary>Roll mode: the scope streams continuously and ignores the trigger.</summary>
+    public bool IsRoll => TimeBase.IsRoll;
+
+    public bool HasTrigger => !IsRoll;
 
     public string OffsetText => Units.Volts(OffsetVolts);
 
     public string TriggerLevelText => Units.Volts(TriggerLevelVolts);
 
-    public string MaximumText => Waveform is null ? NoValue : Units.Volts(Waveform.Maximum);
+    public string MaximumText => Screen is null ? NoValue : Units.Volts(Screen.Maximum);
 
-    public string MinimumText => Waveform is null ? NoValue : Units.Volts(Waveform.Minimum);
+    public string MinimumText => Screen is null ? NoValue : Units.Volts(Screen.Minimum);
 
-    public string PeakToPeakText => Waveform is null ? NoValue : Units.Volts(Waveform.PeakToPeak);
+    public string PeakToPeakText => Screen is null ? NoValue : Units.Volts(Screen.PeakToPeak);
 
-    public string MeanText => Waveform is null ? NoValue : Units.Volts(Waveform.Mean);
+    public string MeanText => Screen is null ? NoValue : Units.Volts(Screen.Mean);
 
     [RelayCommand]
     private void ZeroOffset() => OffsetVolts = 0;
@@ -142,7 +140,7 @@ public partial class AcquisitionViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(IsReady))]
     private async Task RunAsync()
     {
-        _roll.Clear();
+        StartRecording();
         RunMode = RunMode.Running;
         await SendAsync("R");
     }
@@ -163,44 +161,33 @@ public partial class AcquisitionViewModel : ObservableObject
     private async Task SingleAsync()
     {
         await StopAcquisitionAsync();
-        _roll.Clear();
+        StartRecording();
         RunMode = RunMode.Single;
         await SendAsync("R");
     }
 
-    public async Task OnFrameAsync(ScopeFrame frame)
+    /// <param name="received">When the frame's last packet arrived; now if null.</param>
+    public async Task OnFrameAsync(ScopeFrame frame, DateTimeOffset? received = null)
     {
         // The screen freezes on stop, even if a frame already on its way arrives after it.
         // After a time base change the scope sends one more frame of the old kind; drop that too.
-        if (RunMode == RunMode.Stopped || TimeBase.IsRoll != (frame.Samples.Length == RollBuffer.FrameLength))
+        if (RunMode == RunMode.Stopped || IsRoll != (frame.Samples.Length == RollHistory.FrameLength))
         {
             return;
         }
 
-        if (TimeBase.IsRoll)
-        {
-            _roll.Add(frame, Settings);
-            Waveform = _roll.ToWaveform();
-        }
-        else
-        {
-            Waveform = Waveform.From(frame, Settings);
-        }
-
-        if (RunMode == RunMode.Single && (!TimeBase.IsRoll || _roll.IsFull))
+        Record(frame, received ?? _time.GetUtcNow());
+        if (RunMode == RunMode.Single && (!IsRoll || _roll.CurrentSegmentCount >= TimeBase.SamplesOnScreen))
         {
             RunMode = RunMode.Stopped;
             await StopAcquisitionAsync();
         }
     }
 
-    /// <summary>The device button toggles between running and stopped, as the spec asks.</summary>
+    /// <summary>The device button toggles between running and stopped, as the spec asks. Each "BD" is one press (holding doesn't repeat).</summary>
     public async Task OnButtonPressedAsync()
     {
-        var now = _time.GetUtcNow();
-        var repeat = now - _lastButton < ButtonRepeatGap;
-        _lastButton = now;
-        if (repeat || !IsReady)
+        if (!IsReady)
         {
             return;
         }
@@ -227,6 +214,7 @@ public partial class AcquisitionViewModel : ObservableObject
         await PushSettingsAsync();
         if (RunMode == RunMode.Running)
         {
+            _roll.StartSegment(); // the link was down: leave a gap
             await SendAsync("R");
         }
     }
@@ -244,12 +232,9 @@ public partial class AcquisitionViewModel : ObservableObject
             return;
         }
 
-        if (settings.TimeBase != Settings.TimeBase)
-        {
-            _roll.Clear();
-        }
-
+        var timeBaseChanged = settings.TimeBase != Settings.TimeBase;
         Settings = settings;
+        OnSettingsChanged(timeBaseChanged);
 
         // Most displayed values derive from the settings; refresh them all.
         OnPropertyChanged(string.Empty);

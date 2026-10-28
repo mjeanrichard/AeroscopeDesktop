@@ -303,7 +303,7 @@ public class MainViewModelTests
             _link.RaiseData(packet);
         }
 
-        Assert.Equal(512, _viewModel.Acquisition.Waveform!.Volts.Length);
+        Assert.Equal(512, Assert.Single(_viewModel.Acquisition.Screen!.Traces).Volts.Length);
         Assert.Equal("1.19 V", _viewModel.Acquisition.PeakToPeakText); // last frame: 38 codes, converted with the default 1 V/div
     }
 
@@ -326,21 +326,22 @@ public class MainViewModelTests
         Assert.Equal((byte)'R', _link.Writes[1].Packet[0]);
     }
 
-    [Fact]
-    public async Task Device_button_burst_toggles_run_once()
+    [Theory]
+    [InlineData(Captures.ButtonPresses, 5)] // two of them 0.8 s apart, one held about 3 s
+    [InlineData(Captures.Button, 26)] // quick taps 0.26-0.7 s apart
+    public async Task Every_device_button_press_toggles_run(string capture, int presses)
     {
         await ConnectToScopeAsync();
         _link.Writes.Clear();
 
-        // PO, PF, then 26 "BD" at most 0.7 s apart: one press as far as the app is concerned.
-        foreach (var packet in Captures.Packets(Captures.Button, CaptureChannel.Out))
+        foreach (var packet in Captures.Packets(capture, CaptureChannel.Out))
         {
             _link.RaiseOut(packet);
         }
 
-        Assert.Equal(RunMode.Running, _viewModel.Acquisition.RunMode);
-        var command = Assert.Single(_link.Writes, w => w.Characteristic == AeroscopeGatt.ScopeIn);
-        Assert.Equal((byte)'R', command.Packet[0]);
+        var expected = Enumerable.Range(0, presses).SelectMany(i => i % 2 == 0 ? "R" : "SX");
+        Assert.Equal(expected, _link.Writes.Where(w => w.Characteristic == AeroscopeGatt.ScopeIn).Select(w => (char)w.Packet[0]));
+        Assert.Equal(presses % 2 == 1 ? RunMode.Running : RunMode.Stopped, _viewModel.Acquisition.RunMode);
     }
 
     [Fact]

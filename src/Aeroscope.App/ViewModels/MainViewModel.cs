@@ -21,9 +21,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IScopeScanner _scanner;
     private readonly Func<ulong, Task<IScopeLink>> _connect;
     private readonly Action<Action> _post;
+    private readonly TimeProvider _time;
     private readonly FrameAssembler _frameAssembler = new();
     private readonly Dictionary<ulong, DeviceItem> _devicesByAddress = [];
     private IScopeLink? _connection;
+    private DateTimeOffset _lastDataReceived;
 
     public MainViewModel()
         : this(new ScopeScanner(), async address => await ScopeConnection.ConnectAsync(address), PostTo(Application.Current.Dispatcher))
@@ -33,13 +35,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <param name="scanner">Source of advertisements.</param>
     /// <param name="connect">Opens a link to the device with the given address.</param>
     /// <param name="post">Runs an action on the UI thread; BLE events arrive on thread-pool threads.</param>
-    public MainViewModel(IScopeScanner scanner, Func<ulong, Task<IScopeLink>> connect, Action<Action> post)
+    /// <param name="time">Clock for packet arrival times; the system clock if null.</param>
+    public MainViewModel(IScopeScanner scanner, Func<ulong, Task<IScopeLink>> connect, Action<Action> post, TimeProvider? time = null)
     {
         _scanner = scanner;
         _connect = connect;
         _post = post;
+        _time = time ?? TimeProvider.System;
         Acquisition = new AcquisitionViewModel(
-            (characteristic, payload) => WriteAsync(characteristic, payload, characteristic == AeroscopeGatt.ScopeState ? LogKind.State : LogKind.In));
+            (characteristic, payload) => WriteAsync(characteristic, payload, characteristic == AeroscopeGatt.ScopeState ? LogKind.State : LogKind.In),
+            _time);
 
         DevicesView = CollectionViewSource.GetDefaultView(Devices);
         DevicesView.Filter = item => ShowAllDevices || ((DeviceItem)item).IsAeroscope;
@@ -131,7 +136,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var connection = await _connect(device.Address);
             connection.OutPacketReceived += (_, bytes) => _post(() => OnOutPacket(bytes));
-            connection.DataPacketReceived += (_, bytes) => _post(() => OnDataPacket(bytes));
+            connection.DataPacketReceived += (_, bytes) =>
+            {
+                // Stamp on arrival: queued UI work must not bunch frames up (roll mode reads that as a burst).
+                var received = _time.GetUtcNow();
+                _post(() => OnDataPacket(bytes, received));
+            };
             connection.ConnectionChanged += (_, connected) => _post(() => OnConnectionChanged(connected));
             connection.Diagnostic += (_, message) => _post(() => AddLog(LogEntry.Message(LogKind.Error, message)));
             _connection = connection;
@@ -232,8 +242,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnDataPacket(byte[] packet)
+    private void OnDataPacket(byte[] packet, DateTimeOffset received)
     {
+        _lastDataReceived = received;
         if (LogDataPackets)
         {
             AddLog(LogEntry.Packet(LogKind.Data, packet));
@@ -246,7 +257,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         Scope.Apply(frame);
         AddLog(LogEntry.Message(LogKind.Info, $"Frame: {Scope.LastFrame}"));
-        _ = Acquisition.OnFrameAsync(frame);
+        _ = Acquisition.OnFrameAsync(frame, _lastDataReceived);
     }
 
     private void OnAdvertisement(ScopeAdvertisement ad)

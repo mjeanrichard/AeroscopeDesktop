@@ -107,7 +107,7 @@ public sealed class ScopeHardwareTests : IDisposable
         assembler.FrameCompleted += (_, frame) =>
         {
             // After roll mode (e.g. an earlier test), R first flushes up to 3 leftover 16-sample frames.
-            if (frames.Count == 0 && frame.Samples.Length == RollBuffer.FrameLength)
+            if (frames.Count == 0 && frame.Samples.Length == RollHistory.FrameLength)
             {
                 return;
             }
@@ -173,7 +173,7 @@ public sealed class ScopeHardwareTests : IDisposable
         await acquisition.RunCommand.ExecuteAsync(null);
         Assert.True(await frameArrived.WaitAsync(ReplyTimeout));
         await acquisition.StopCommand.ExecuteAsync(null);
-        Assert.NotNull(acquisition.Waveform);
+        Assert.NotNull(acquisition.Screen);
 
         // Single: exactly one more frame, then the scope stays quiet.
         await Task.Delay(500);
@@ -222,17 +222,17 @@ public sealed class ScopeHardwareTests : IDisposable
 
         await acquisition.SingleCommand.ExecuteAsync(null); // 32 frames of 160 ms
         await stopped.Task.WaitAsync(ReplyTimeout);
-        var waveform = acquisition.Waveform;
+        var screen = acquisition.Screen;
         await Task.Delay(1000);
 
         lock (assembler)
         {
-            Assert.All(lengths, length => Assert.Equal(RollBuffer.FrameLength, length));
-            Assert.InRange(lengths.Count, 32, 34); // up to 2 more: a leftover at the start, one racing the stop
+            Assert.All(lengths, length => Assert.Equal(RollHistory.FrameLength, length));
+            Assert.InRange(lengths.Count, 32, 36); // a few more: leftovers at the start (dropped), one racing the stop
         }
 
-        Assert.Same(waveform, acquisition.Waveform); // frozen after the stop
-        Assert.Equal(TimeBase.SamplesOnScreen, waveform!.Volts.Length);
+        Assert.Same(screen, acquisition.Screen); // frozen after the stop
+        Assert.Equal(TimeBase.SamplesOnScreen, Assert.Single(screen!.Traces).Volts.Length);
     }
 
     [HardwareFact]

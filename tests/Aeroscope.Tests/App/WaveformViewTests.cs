@@ -140,10 +140,25 @@ public class WaveformViewTests
     public void Flat_trace_is_drawn_at_its_voltage()
     {
         // 2 V at 1 V/div with 0 V at the centre: two divisions (100 px) above the centre.
-        var pixels = Render(view => view.Waveform = new Waveform(Enumerable.Repeat(2.0, 512).ToArray(), 10e-9, -2.56e-6));
+        var pixels = Render(view => view.Traces = [new Waveform(Enumerable.Repeat(2.0, 512).ToArray(), 10e-9, -2.56e-6)]);
 
         Assert.True(AnyInColumn(pixels, 125, 98, 102, IsTrace));
         Assert.False(AnyInColumn(pixels, 125, 150, 250, IsTrace));
+    }
+
+    [Fact]
+    public void Separate_traces_are_not_joined()
+    {
+        // Two recordings with a gap between them, as roll history draws runs separated by a stop.
+        var pixels = Render(view => view.Traces =
+        [
+            new Waveform(Enumerable.Repeat(2.0, 400).ToArray(), 10e-9, -5e-6), // x 0-200, 2 V
+            new Waveform(Enumerable.Repeat(-2.0, 400).ToArray(), 10e-9, 1e-6), // x 300-500, -2 V
+        ]);
+
+        Assert.True(AnyInColumn(pixels, 100, 98, 102, IsTrace));
+        Assert.True(AnyInColumn(pixels, 400, 298, 302, IsTrace));
+        Assert.False(AnyInColumn(pixels, 250, 0, Height - 1, IsTrace));
     }
 
     [Fact]
@@ -151,7 +166,7 @@ public class WaveformViewTests
     {
         var pixels = Render(view =>
         {
-            view.Waveform = new Waveform(Enumerable.Repeat(2.0, 512).ToArray(), 10e-9, -2.56e-6);
+            view.Traces = [new Waveform(Enumerable.Repeat(2.0, 512).ToArray(), 10e-9, -2.56e-6)];
             view.VoltsPerDivision = 2;
             view.CentreVolts = 2; // the trace now sits on the centre line
         });
@@ -165,7 +180,7 @@ public class WaveformViewTests
     {
         var pixels = Render(_ => { });
 
-        Assert.False(Enumerable.Range(0, Height).Any(y => IsTrace(pixels[125, y])));
+        Assert.DoesNotContain(Enumerable.Range(0, Height), y => IsTrace(pixels[125, y]));
     }
 
     [Fact]

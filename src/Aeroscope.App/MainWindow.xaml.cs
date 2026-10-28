@@ -1,6 +1,7 @@
 ﻿using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Aeroscope.App.ViewModels;
 
@@ -40,6 +41,26 @@ public partial class MainWindow : Window
                 LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
             }
         });
+    }
+
+    /// <summary>Wheel scrolls through the history (up is back in time); Ctrl+wheel zooms the roll view.</summary>
+    private void OnScreenMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var acquisition = _viewModel.Acquisition;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            var zoom = e.Delta > 0 ? acquisition.ZoomInCommand : acquisition.ZoomOutCommand;
+            if (zoom.CanExecute(null))
+            {
+                zoom.Execute(null);
+            }
+        }
+        else
+        {
+            acquisition.Scroll(e.Delta > 0 ? -1 : 1);
+        }
+
+        e.Handled = true;
     }
 
     protected override void OnClosing(CancelEventArgs e)

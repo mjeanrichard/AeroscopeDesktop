@@ -6,7 +6,7 @@ Target `net10.0-windows10.0.19041.0` everywhere (WinRT Bluetooth API).
 ## Layout
 
 - `src/Aeroscope.Core`: BLE adapters (`Bluetooth/`), protocol encode/decode (`Protocol/`), capture files (`Diagnostics/`). No UI.
-- `src/Aeroscope.App`: WPF app, MVVM with CommunityToolkit.Mvvm (partial-property `[ObservableProperty]`). `MainViewModel` owns the connection; `AcquisitionViewModel` owns settings, run control and the waveform; `Controls/WaveformView` draws the screen.
+- `src/Aeroscope.App`: WPF app, MVVM with CommunityToolkit.Mvvm (partial-property `[ObservableProperty]`). `MainViewModel` owns the connection; `AcquisitionViewModel` owns settings, run control and what the screen shows; its `History` part keeps everything received while running (`FrameHistory` for triggered frames, `RollHistory` segments of raw codes for roll mode, both in memory) for scrolling back. `Controls/WaveformView` draws the screen.
 - `src/Aeroscope.Probe`: console tool to drive the scope and record/decode captures. Run without args for usage.
 - `tests/Aeroscope.Tests`: xUnit tests for all projects; fixtures in `Captures/` were recorded from the real scope.
 - `docs/`: reference only. Original Qt/Android app and `AeroscopeProtocol/Aeroscope_BTLE_Protocol_Specification.pdf` (read it with `pdftotext -layout`).
@@ -44,14 +44,13 @@ The scope is in range of this PC's Bluetooth adapter. It accepts one connection 
 - Scaling (`ScopeSettings`, `Waveform`): 8 divisions span ADC codes 0-255; ranges and DAC factors from the Android app hold (checked at 1 V and 100 mV/div). Raising the offset DAC moves the trace down, so the offset is the voltage at the screen centre. t = 0 (trigger) is sample 256 of a 512 frame; a real rising edge crosses there.
 - Settings written while running apply from the next frame (one stale frame follows each write).
 - Unconnected input reads about +0.36 V (1 V/div) / +0.26 V (100 mV/div): uncalibrated zero error.
-- Roll mode: sampler codes 0xE7/0xEF/0xF7/0xFF (500 ms-5 s/div). `R` streams one-packet 16-sample frames (size code 1) back to back in real time, whatever the trigger settings. After a roll `S` + `X`, the next `R` first delivers 2-3 leftover 16-sample frames at once (the last one partly zeros when leaving roll mode); the app drops frames whose size doesn't match the time base.
-- Device button sends `BD` on Scope Out (not `BP`). The app toggles run/stop, ignoring `BD`s less than 1 s apart.
+- Roll mode: sampler codes 0xE7/0xEF/0xF7/0xFF (500 ms-5 s/div). `R` streams one-packet 16-sample frames (size code 1) back to back in real time, whatever the trigger settings. After a roll `S` + `X`, the next `R` first delivers 2-3 leftover 16-sample frames at once (the last one partly zeros when leaving roll mode): `RollHistory` drops frames under 30 ms apart at a segment start, and the app drops frames whose size doesn't match the time base. Sample times = arrival of a segment's first frame minus its duration, plus count x interval; this matches arrival times to within 30 ms (capture 17). Stamp packets on arrival, before they queue for the UI thread.
+- Device button sends one `BD` on Scope Out per press (not `BP`); holding it doesn't repeat (capture 19). The app toggles run/stop on each.
 - A good test signal: touching the probe tip gives 50 Hz hum (codes ~100-175 at 1 V/div). Use 5 ms/div to see whole cycles.
 
 ## Open questions
 
 - `F` (single) and `L` (full frame) almost never return a frame, whatever the trigger mode or command order; only one capture (`07-...`) worked. The app's Single is `R`, first frame, then `S` + `X` (verified on hardware).
 - `QC` answers `C` + zeros, not the spec's `CB` + seven 16-bit offsets.
-- Not yet supported: timebases faster than 500 ns/div (software zoom in the Android app), 4096-sample display.
-- Whether a held button repeats `BD` (every 0.3-0.5 s in capture 11) or those were separate presses is unverified.
+- Not yet supported: timebases faster than 500 ns/div (software zoom in the Android app), 4096-sample display, saving/loading the history.
 - Whether the scope re-sends `PF` after an automatic reconnect (the app relies on it to resume) is unverified.

@@ -22,8 +22,14 @@ internal static class Captures
     /// </summary>
     public const string SingleThenFull = "07-touch-normal-trigger.txt";
 
-    /// <summary>Device button pressed: 26 "BD" packets, 0.3-0.7 s apart, nothing on Scope Data.</summary>
+    /// <summary>Device button tapped quickly: 26 "BD" packets, 0.26-0.7 s apart, nothing on Scope Data.</summary>
     public const string Button = "11-button.txt";
+
+    /// <summary>
+    /// Device button: 5 presses ("BD" at 4.9, 19.3, 28.3, 58.5 and 59.4 s, the last two deliberate
+    /// presses 0.8 s apart), one of them held about 3 s without repeating. Telemetry "T" twice.
+    /// </summary>
+    public const string ButtonPresses = "19-button-presses.txt";
 
     /// <summary>Read depth 9 with read start 0: run mode streams full 4096-sample frames.</summary>
     public const string RunFullDepth = "15-run-read-depth-4096.txt";
@@ -41,6 +47,13 @@ internal static class Captures
     /// 5 s/div (0xFF) streams 16-sample frames 1.6 s apart. Ends with S X.
     /// </summary>
     public const string Roll = "17-roll-mode.txt";
+
+    /// <summary>
+    /// Roll mode at 500 ms/div started three times: R (3 frames) S X; R, which first delivers 2
+    /// leftover frames at once, then 5 frames 150 ms apart, S (one more frame arrives); R, again 2
+    /// at once, then 4 frames, S X.
+    /// </summary>
+    public const string RollRestart = "18-roll-restart.txt";
 
     /// <summary>QTI, QP, QVR, QC, QE and their replies.</summary>
     public const string Startup = "01-startup.txt";

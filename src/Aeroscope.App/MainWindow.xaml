@@ -105,18 +105,38 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <controls:WaveformView Grid.Row="0" Grid.Column="0"
-                                           Waveform="{Binding Waveform}"
+                                           Traces="{Binding Screen.Traces}"
                                            VoltsPerDivision="{Binding Range.VoltsPerDivision}"
-                                           SecondsPerDivision="{Binding TimeBase.SecondsPerDivision}"
+                                           SecondsPerDivision="{Binding ViewSecondsPerDivision}"
+                                           MouseWheel="OnScreenMouseWheel"
+                                           ToolTip="Wheel: scroll through the history. Ctrl+wheel: zoom (roll mode)."
                                            CentreVolts="{Binding OffsetVolts}"
                                            TriggerLevelVolts="{Binding TriggerLevelVolts}"
                                            ShowTrigger="{Binding HasTrigger}" />
 
+                    <!-- History: scroll back through everything received while running -->
+                    <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,6,0,0">
+                        <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearHistoryCommand}" Margin="6,0,0,0"
+                                ToolTip="Forget the recorded history" />
+                        <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
+                                ToolTip="Follow the newest data" />
+                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="8,0" Margin="6,0,0,0"
+                                ToolTip="Zoom in (roll mode)" />
+                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="8,0" Margin="6,0,0,0"
+                                ToolTip="Zoom out over the recording (roll mode)" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <ScrollBar Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
+                                   Minimum="0" Maximum="{Binding HistoryMaximum}" ViewportSize="{Binding HistoryViewport}"
+                                   SmallChange="{Binding HistorySmallChange}" LargeChange="{Binding HistoryLargeChange}"
+                                   Value="{Binding HistoryPosition}" />
+                    </DockPanel>
+
                     <!-- Readouts under the screen -->
-                    <WrapPanel Grid.Row="1" Grid.Column="0" Margin="0,6,0,0">
+                    <WrapPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
                         <WrapPanel.Resources>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Margin" Value="0,0,18,0" />
@@ -124,14 +144,14 @@
                             </Style>
                         </WrapPanel.Resources>
                         <TextBlock Text="{Binding Range, StringFormat=CH {0}}" />
-                        <TextBlock Text="{Binding TimeBase}" />
+                        <TextBlock Text="{Binding HorizontalText}" />
                         <TextBlock Text="{Binding PeakToPeakText, StringFormat=Vpp {0}}" />
                         <TextBlock Text="{Binding MaximumText, StringFormat=Max {0}}" />
                         <TextBlock Text="{Binding MinimumText, StringFormat=Min {0}}" />
                         <TextBlock Text="{Binding MeanText, StringFormat=Mean {0}}" />
                     </WrapPanel>
 
-                    <ScrollViewer Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <TextBlock Text="Acquisition" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
                             <StackPanel Orientation="Horizontal">

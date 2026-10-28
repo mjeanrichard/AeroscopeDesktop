@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aeroscope.App/Aeroscope.App.csproj" />
+    <Project Path="src/Aeroscope.Core/Aeroscope.Core.csproj" />
+    <Project Path="src/Aeroscope.Probe/Aeroscope.Probe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Aeroscope.Tests/Aeroscope.Tests.csproj" />
+  </Folder>
+</Solution>

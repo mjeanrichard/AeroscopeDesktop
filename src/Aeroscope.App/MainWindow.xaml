@@ -1,0 +1,254 @@
+﻿<Window x:Class="Aeroscope.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Aeroscope.App.ViewModels"
+        xmlns:controls="clr-namespace:Aeroscope.App.Controls"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:MainViewModel}"
+        Title="Aeroscope" Height="760" Width="1280">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,12,0,4" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="Gray" />
+            <Setter Property="Margin" Value="0,1,12,1" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar: devices, connection, scope status -->
+        <DockPanel Grid.Column="0">
+            <TextBlock DockPanel.Dock="Top" Text="Devices" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                <Button Content="{Binding ScanButtonText}" Command="{Binding ToggleScanCommand}" />
+                <CheckBox Content="Show all" IsChecked="{Binding ShowAllDevices}" VerticalAlignment="Center"
+                          ToolTip="Show all BLE devices, not only Aeroscopes" />
+            </StackPanel>
+
+            <Grid DockPanel.Dock="Bottom" DataContext="{Binding Scope}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                    <RowDefinition /><RowDefinition /><RowDefinition />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Scope" Style="{StaticResource SectionHeader}" />
+                <TextBlock Grid.Row="1" Text="Power" Style="{StaticResource Label}" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Power}" />
+                <TextBlock Grid.Row="2" Text="Battery" Style="{StaticResource Label}" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Battery}" />
+                <TextBlock Grid.Row="3" Text="Temperature" Style="{StaticResource Label}" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Temperature}" />
+                <TextBlock Grid.Row="4" Text="Firmware" Style="{StaticResource Label}" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Firmware}" />
+                <TextBlock Grid.Row="5" Text="Serial" Style="{StaticResource Label}" />
+                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SerialNumber}" />
+                <TextBlock Grid.Row="6" Text="Frames" Style="{StaticResource Label}" />
+                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding FramesReceived}" />
+            </Grid>
+
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Connect" Command="{Binding ConnectCommand}" />
+                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+
+            <ListBox ItemsSource="{Binding DevicesView}" SelectedItem="{Binding SelectedDevice}"
+                     HorizontalContentAlignment="Stretch">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="vm:DeviceItem">
+                        <Grid Margin="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding AddressText}" Foreground="Gray" FontFamily="Consolas" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="Gray"
+                                       Text="{Binding Rssi, StringFormat={}{0} dBm}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+
+        <TabControl Grid.Column="2">
+            <!-- Scope screen and acquisition controls -->
+            <TabItem Header="Scope" DataContext="{Binding Acquisition}">
+                <Grid Margin="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="230" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <controls:WaveformView Grid.Row="0" Grid.Column="0"
+                                           Waveform="{Binding Waveform}"
+                                           VoltsPerDivision="{Binding Range.VoltsPerDivision}"
+                                           SecondsPerDivision="{Binding TimeBase.SecondsPerDivision}"
+                                           CentreVolts="{Binding OffsetVolts}"
+                                           TriggerLevelVolts="{Binding TriggerLevelVolts}"
+                                           ShowTrigger="{Binding HasTrigger}" />
+
+                    <!-- Readouts under the screen -->
+                    <WrapPanel Grid.Row="1" Grid.Column="0" Margin="0,6,0,0">
+                        <WrapPanel.Resources>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Margin" Value="0,0,18,0" />
+                                <Setter Property="FontFamily" Value="Consolas" />
+                            </Style>
+                        </WrapPanel.Resources>
+                        <TextBlock Text="{Binding Range, StringFormat=CH {0}}" />
+                        <TextBlock Text="{Binding TimeBase}" />
+                        <TextBlock Text="{Binding PeakToPeakText, StringFormat=Vpp {0}}" />
+                        <TextBlock Text="{Binding MaximumText, StringFormat=Max {0}}" />
+                        <TextBlock Text="{Binding MinimumText, StringFormat=Min {0}}" />
+                        <TextBlock Text="{Binding MeanText, StringFormat=Mean {0}}" />
+                    </WrapPanel>
+
+                    <ScrollViewer Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="Acquisition" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Run" Command="{Binding RunCommand}" />
+                                <Button Content="Single" Command="{Binding SingleCommand}"
+                                        ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full." />
+                                <Button Content="Stop" Command="{Binding StopCommand}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding RunMode}" Foreground="Gray" Margin="0,4,0,0" />
+
+                            <TextBlock Text="Vertical" Style="{StaticResource SectionHeader}" />
+                            <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" />
+                            <CheckBox Content="DC coupling" IsChecked="{Binding DcCoupled}" Margin="0,6,0,0" />
+                            <DockPanel Margin="0,6,0,0">
+                                <TextBlock Text="Offset" Style="{StaticResource Label}" />
+                                <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroOffsetCommand}" Padding="8,0" Margin="6,0,0,0" />
+                                <TextBlock Text="{Binding OffsetText}" />
+                            </DockPanel>
+                            <Slider Minimum="-10" Maximum="10" SmallChange="0.1" LargeChange="1"
+                                    Value="{Binding OffsetDivisions}" ToolTip="Voltage at the screen centre, in divisions" />
+
+                            <TextBlock Text="Horizontal" Style="{StaticResource SectionHeader}" />
+                            <ComboBox ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" />
+
+                            <TextBlock Text="Trigger" Style="{StaticResource SectionHeader}" />
+                            <StackPanel IsEnabled="{Binding HasTrigger}">
+                                <ComboBox ItemsSource="{Binding TriggerEdges}" SelectedItem="{Binding TriggerEdge}" />
+                                <CheckBox Content="Auto trigger" IsChecked="{Binding AutoTrigger}" Margin="0,6,0,0"
+                                          ToolTip="Keep acquiring when no edge is found" />
+                                <CheckBox Content="Noise reject" IsChecked="{Binding NoiseReject}" Margin="0,4,0,0"
+                                          ToolTip="Only applies to a single edge" />
+                                <DockPanel Margin="0,6,0,0">
+                                    <TextBlock Text="Level" Style="{StaticResource Label}" />
+                                    <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroTriggerLevelCommand}" Padding="8,0" Margin="6,0,0,0" />
+                                    <TextBlock Text="{Binding TriggerLevelText}" />
+                                </DockPanel>
+                                <Slider Minimum="-4" Maximum="4" SmallChange="0.05" LargeChange="0.5"
+                                        Value="{Binding TriggerLevelDivisions}" ToolTip="Trigger level, in divisions from the screen centre" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <!-- Protocol diagnostics -->
+            <TabItem Header="Diagnostics">
+                <Grid Margin="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Characteristics" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
+                        <ListView ItemsSource="{Binding Characteristics}" MinHeight="60">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Role" Width="110" DisplayMemberBinding="{Binding Role}" />
+                                    <GridViewColumn Header="UUID" Width="300" DisplayMemberBinding="{Binding Uuid}" />
+                                    <GridViewColumn Header="Properties" Width="260" DisplayMemberBinding="{Binding Properties}" />
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1">
+                        <StackPanel.Resources>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Margin" Value="0,0,6,6" />
+                            </Style>
+                        </StackPanel.Resources>
+                        <TextBlock Text="Raw commands" Style="{StaticResource SectionHeader}" />
+                        <WrapPanel>
+                            <Button Content="Power (QP)" Command="{Binding SendCommandCommand}" CommandParameter="QP" />
+                            <Button Content="Telemetry (QTI)" Command="{Binding SendCommandCommand}" CommandParameter="QTI" />
+                            <Button Content="Version (QVR)" Command="{Binding SendCommandCommand}" CommandParameter="QVR" />
+                            <Button Content="Error log (QE)" Command="{Binding SendCommandCommand}" CommandParameter="QE" />
+                            <Button Content="Calibration (QC)" Command="{Binding SendCommandCommand}" CommandParameter="QC" />
+                        </WrapPanel>
+                        <WrapPanel>
+                            <Button Content="Send settings" Command="{Binding SendSettingsCommand}"
+                                    ToolTip="Write the FPGA registers for the settings on the Scope tab" />
+                            <Button Content="Run (R)" Command="{Binding SendCommandCommand}" CommandParameter="R" />
+                            <Button Content="Single (F)" Command="{Binding SendCommandCommand}" CommandParameter="F" />
+                            <Button Content="Stop (S)" Command="{Binding SendCommandCommand}" CommandParameter="S" />
+                            <Button Content="Cancel (X)" Command="{Binding SendCommandCommand}" CommandParameter="X" />
+                            <Button Content="Full frame (L)" Command="{Binding SendCommandCommand}" CommandParameter="L" />
+                        </WrapPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCustomCommandCommand}" Margin="6,0,0,0" />
+                            <TextBox Text="{Binding CustomCommand, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                     VerticalContentAlignment="Center" ToolTip="Any ASCII command for Scope In, e.g. QTI" />
+                        </DockPanel>
+                        <CheckBox Content="Log raw data packets" IsChecked="{Binding LogDataPackets}" Margin="0,6,0,0" />
+                    </StackPanel>
+
+                    <DockPanel Grid.Row="2">
+                        <DockPanel DockPanel.Dock="Top" Margin="0,12,0,4">
+                            <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearLogCommand}" Margin="0" Padding="8,0" />
+                            <TextBlock Text="Log" FontWeight="SemiBold" />
+                        </DockPanel>
+                        <ListBox x:Name="LogList" ItemsSource="{Binding Log}" FontFamily="Consolas"
+                                 VirtualizingPanel.IsVirtualizing="True">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:LogEntry">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding TimeText}" Foreground="Gray" Width="100" />
+                                        <TextBlock Text="{Binding KindText}" Width="60" />
+                                        <TextBlock Text="{Binding Text}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

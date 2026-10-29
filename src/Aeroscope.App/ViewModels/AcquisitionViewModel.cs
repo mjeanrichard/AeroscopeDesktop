@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Aeroscope.Core.Bluetooth;
 using Aeroscope.Core.Protocol;
@@ -23,6 +24,10 @@ public partial class AcquisitionViewModel : ObservableObject
     private bool _pushing;
     private bool _pushPending;
     private readonly SettingsTimeline _timeline = new();
+    private readonly CaptureProgress _progress = new();
+
+    /// <summary>Cycles shorter than this (several frames a second) get no progress indicator.</summary>
+    private static readonly TimeSpan ProgressThreshold = TimeSpan.FromSeconds(0.5);
 
     /// <param name="write">Writes a payload to a characteristic (Scope In or Scope State).</param>
     /// <param name="time">Clock for frame times; the system clock if null.</param>
@@ -48,6 +53,21 @@ public partial class AcquisitionViewModel : ObservableObject
 
     [ObservableProperty]
     public partial RunMode RunMode { get; private set; }
+
+    /// <summary>Running with a frame cycle long enough to be worth following.</summary>
+    [ObservableProperty]
+    public partial bool ShowProgress { get; private set; }
+
+    /// <summary>0-1: through the capture, or through the frame's packets.</summary>
+    [ObservableProperty]
+    public partial double ProgressFraction { get; private set; }
+
+    /// <summary>Waiting for a trigger: no telling how long.</summary>
+    [ObservableProperty]
+    public partial bool ProgressIndeterminate { get; private set; }
+
+    [ObservableProperty]
+    public partial string ProgressText { get; private set; } = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MaximumText), nameof(MinimumText), nameof(PeakToPeakText), nameof(MeanText))]
@@ -210,6 +230,31 @@ public partial class AcquisitionViewModel : ObservableObject
         }
     }
 
+    /// <summary>A Scope Data packet, as it arrives: follows the transfer of a frame.</summary>
+    public void OnDataPacket(byte[] packet, DateTimeOffset received)
+    {
+        _progress.PacketArrived(packet, received);
+        UpdateProgress();
+    }
+
+    /// <summary>Refreshes the progress indicator; call it a few times a second while running.</summary>
+    public void UpdateProgress()
+    {
+        var status = _progress.At(_time.GetUtcNow());
+        ShowProgress = RunMode != RunMode.Stopped && status.Phase != CapturePhase.Idle && _progress.ExpectedCycle >= ProgressThreshold;
+        ProgressFraction = status.Fraction;
+        ProgressIndeterminate = status.Phase == CapturePhase.WaitingForTrigger;
+        ProgressText = status.Phase switch
+        {
+            CapturePhase.Capturing => $"Capturing {Seconds(status.Position)} of {Seconds(status.Cycle)} s",
+            CapturePhase.WaitingForTrigger => $"Waiting for trigger, {Seconds(status.Elapsed)} s",
+            CapturePhase.Receiving => $"Receiving {Seconds(status.Position)} of {Seconds(status.Cycle)} s",
+            _ => "",
+        };
+
+        static string Seconds(TimeSpan time) => time.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture);
+    }
+
     /// <summary>The device button toggles between running and stopped, as the spec asks. Each "BD" is one press (holding doesn't repeat).</summary>
     public async Task OnButtonPressedAsync()
     {
@@ -249,6 +294,8 @@ public partial class AcquisitionViewModel : ObservableObject
     {
         IsReady = false;
         RunMode = RunMode.Stopped;
+        _progress.Stopped();
+        UpdateProgress();
     }
 
     private void Update(ScopeSettings settings)
@@ -293,6 +340,7 @@ public partial class AcquisitionViewModel : ObservableObject
                 var acknowledged = await write.ContinueWith(_ => _time.GetUtcNow(), TaskContinuationOptions.ExecuteSynchronously);
                 await write;
                 _timeline.Written(settings, acknowledged);
+                _progress.Written(settings, acknowledged);
             }
             while (_pushPending);
         }
@@ -306,11 +354,16 @@ public partial class AcquisitionViewModel : ObservableObject
     private Task StartAcquisitionAsync()
     {
         _timeline.Started(_time.GetUtcNow());
+        _progress.Started(_timeline.Latest, _time.GetUtcNow());
+        UpdateProgress();
         return SendAsync("R");
     }
 
     private async Task StopAcquisitionAsync()
     {
+        _progress.Stopped();
+        UpdateProgress();
+
         // Stop, then cancel any frame already requested so no stale frame arrives later.
         await SendAsync("S");
         await SendAsync("X");

@@ -246,6 +246,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void OnDataPacket(byte[] packet, DateTimeOffset received)
     {
         _lastDataReceived = received;
+        Acquisition.OnDataPacket(packet, received);
         if (packet[0] != 0)
         {
             _frameStarted = received; // a frame's first packet starts with its size code

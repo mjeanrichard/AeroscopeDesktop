@@ -110,6 +110,13 @@
                     </Grid.RowDefinitions>
 
                     <DockPanel Grid.Row="0" Grid.Column="0">
+                        <!-- Where the scope is in a long frame cycle -->
+                        <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0" Visibility="{Binding ShowProgress, Converter={StaticResource Visible}}">
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" FontFamily="Consolas" Margin="8,0,0,0" MinWidth="230" />
+                            <ProgressBar Height="6" VerticalAlignment="Center" Maximum="1" Value="{Binding ProgressFraction, Mode=OneWay}"
+                                         IsIndeterminate="{Binding ProgressIndeterminate}"
+                                         ToolTip="The whole frame cycle: the capture (from the time base and frame size, within about 0.3 s), then the transfer (by packets received)." />
+                        </DockPanel>
                         <!-- Pans within a frame wider than the screen while zoomed in -->
                         <ScrollBar DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0"
                                    Visibility="{Binding CanPan, Converter={StaticResource Visible}}"

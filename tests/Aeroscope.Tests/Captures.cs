@@ -93,6 +93,23 @@ internal static class Captures
     /// </summary>
     public const string FrameSizes = "24-frame-sizes.txt";
 
+    /// <summary>
+    /// The 1 MHz sine, 512-sample record. Trigger level above the signal with auto trigger:
+    /// 4 frames at 20 ms/div, 255-327 ms apart (the auto trigger fires 0.05-0.12 s after the
+    /// 205 ms capture), and 3 at 200 ms/div, 2.14-2.24 s apart. Then without auto trigger: no
+    /// frame for 5.2 s, until the level is lowered into the signal (10.5-15.7 s); a frame then
+    /// came 113 ms after that write (only the post-trigger half was left to capture), and
+    /// another 113 ms after it.
+    /// </summary>
+    public const string TriggerWait = "25-trigger-wait.txt";
+
+    /// <summary>
+    /// The 1 MHz sine, 512-sample record, rising edge through the signal: without auto
+    /// trigger 6 frames at 20 ms/div (189-299 ms after the previous one) and 4 at 200 ms/div
+    /// (2.12-2.40 s), then with auto trigger 6 at 20 ms/div (222-336 ms).
+    /// </summary>
+    public const string NormalTrigger = "26-normal-trigger.txt";
+
     /// <summary>QTI, QP, QVR, QC, QE and their replies.</summary>
     public const string Startup = "01-startup.txt";
 
@@ -111,7 +128,10 @@ internal static class Captures
     public static IEnumerable<byte[]> Packets(string name, CaptureChannel channel)
         => Load(name).Where(p => p.Channel == channel).Select(p => p.Bytes);
 
-    /// <summary>Range, time base and offset from a recorded State (register block) packet.</summary>
+    /// <summary>
+    /// Range, time base, offset, auto trigger and record length (as the frame size) from a
+    /// recorded State (register block) packet.
+    /// </summary>
     public static ScopeSettings SettingsFrom(byte[] registers)
     {
         var range = VoltageRange.All.Single(r => r.FrontEndCode == (registers[3] & 0x7F));
@@ -121,6 +141,8 @@ internal static class Captures
             Range = range,
             TimeBase = TimeBase.All.Single(t => t.SamplerCode == registers[4]),
             OffsetVolts = (dac - 0x8000) * range.VoltsPerDacCount,
+            AutoTrigger = (registers[0] & 0x01) != 0,
+            FrameSize = FrameAssembler.FrameLength(registers[9]),
         };
     }
 

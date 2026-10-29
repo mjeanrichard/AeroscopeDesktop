@@ -10,12 +10,17 @@ namespace Aeroscope.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
+    private readonly DispatcherTimer _progressTimer;
     private bool _scrollPending;
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = _viewModel;
+
+        // Moves the capture progress along between packets.
+        _progressTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background,
+            (_, _) => _viewModel.Acquisition.UpdateProgress(), Dispatcher);
 
         _viewModel.Log.CollectionChanged += OnLogChanged;
     }
@@ -65,6 +70,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        _progressTimer.Stop();
         _viewModel.Dispose();
         base.OnClosing(e);
     }

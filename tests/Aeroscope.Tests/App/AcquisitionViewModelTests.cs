@@ -475,6 +475,87 @@ public class AcquisitionViewModelTests
         Assert.True(_viewModel.IsLive);
     }
 
+    // Capture progress
+
+    private async Task RunningAt200msAsync(bool autoTrigger = true)
+    {
+        _viewModel.TimeBase = TimeBase.All.Single(t => t.Name == "200 ms");
+        _viewModel.AutoTrigger = autoTrigger;
+        await RunningAsync();
+    }
+
+    [Fact]
+    public async Task No_progress_when_frames_come_several_times_a_second()
+    {
+        await RunningAsync(); // 500 ns/div, 512 samples
+        _clock.Advance(TimeSpan.FromSeconds(0.1));
+
+        _viewModel.UpdateProgress();
+
+        Assert.False(_viewModel.ShowProgress);
+    }
+
+    [Fact]
+    public async Task Progress_follows_a_long_capture()
+    {
+        await RunningAt200msAsync();
+        _clock.Advance(TimeSpan.FromSeconds(1));
+
+        _viewModel.UpdateProgress();
+
+        Assert.True(_viewModel.ShowProgress);
+        Assert.False(_viewModel.ProgressIndeterminate);
+        // One bar over the cycle: 2.048 s capture, then 27 packets at about 7 ms.
+        Assert.Equal("Capturing 1.0 of 2.2 s", _viewModel.ProgressText);
+        Assert.Equal(1 / (2.048 + 27 * 0.007), _viewModel.ProgressFraction, precision: 9);
+    }
+
+    [Fact]
+    public async Task Progress_continues_through_the_packets_of_a_frame()
+    {
+        await RunningAt200msAsync();
+        _clock.Advance(TimeSpan.FromSeconds(2.1));
+
+        _viewModel.OnDataPacket(Captures.Packet("06 00 80"), _clock.GetUtcNow());
+
+        Assert.Equal("Receiving 2.1 of 2.2 s", _viewModel.ProgressText);
+        Assert.Equal((2.048 + 0.007) / (2.048 + 27 * 0.007), _viewModel.ProgressFraction, precision: 9);
+    }
+
+    [Fact]
+    public async Task Without_auto_trigger_progress_waits_for_the_trigger()
+    {
+        await RunningAt200msAsync(autoTrigger: false);
+        _clock.Advance(TimeSpan.FromSeconds(3.048));
+
+        _viewModel.UpdateProgress();
+
+        Assert.True(_viewModel.ProgressIndeterminate);
+        Assert.Equal("Waiting for trigger, 1.0 s", _viewModel.ProgressText);
+    }
+
+    [Fact]
+    public async Task A_settings_change_restarts_the_capture_progress()
+    {
+        await RunningAt200msAsync();
+        _clock.Advance(TimeSpan.FromSeconds(1.5));
+
+        _viewModel.Range = VoltageRange.Range2V;
+        _viewModel.UpdateProgress();
+
+        Assert.Equal("Capturing 0.0 of 2.2 s", _viewModel.ProgressText);
+    }
+
+    [Fact]
+    public async Task Stop_hides_the_progress()
+    {
+        await RunningAt200msAsync();
+
+        await _viewModel.StopCommand.ExecuteAsync(null);
+
+        Assert.False(_viewModel.ShowProgress);
+    }
+
     // Frame size
 
     /// <summary>The frames of a size from capture 24 (500 ns/div, the 1 MHz sine).</summary>

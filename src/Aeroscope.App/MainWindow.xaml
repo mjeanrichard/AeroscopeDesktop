@@ -6,12 +6,17 @@
         xmlns:vm="clr-namespace:Aeroscope.App.ViewModels"
         xmlns:controls="clr-namespace:Aeroscope.App.Controls"
         xmlns:local="clr-namespace:Aeroscope.App"
+        xmlns:core="clr-namespace:Aeroscope.Core.Protocol;assembly=Aeroscope.Core"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance vm:MainViewModel}"
         Title="Aeroscope" Height="760" Width="1280">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="Visible" />
-        <Style TargetType="Button">
+        <controls:ValueEquals x:Key="ValueEquals" />
+        <sys:Boolean x:Key="True">True</sys:Boolean>
+        <sys:Boolean x:Key="False">False</sys:Boolean>
+        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="12,4" />
             <Setter Property="Margin" Value="0,0,6,0" />
         </Style>
@@ -76,7 +81,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="230" />
+                        <ColumnDefinition Width="260" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
@@ -116,9 +121,9 @@
                                 ToolTip="Forget the recorded history" />
                         <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
                                 ToolTip="Follow the newest data" />
-                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="8,0" Margin="6,0,0,0"
+                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0"
                                 ToolTip="Zoom in: roll mode, or a frame wider than the screen" />
-                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="8,0" Margin="6,0,0,0"
+                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="6,0,0,0"
                                 ToolTip="Zoom out: over the roll recording, or to the whole frame" />
                         <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
                         <ScrollBar Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
@@ -144,61 +149,219 @@
                     </WrapPanel>
 
                     <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <TextBlock Text="Acquisition" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="{Binding RunStopText}" Command="{Binding RunStopCommand}" MinWidth="70"
-                                        ToolTip="Run continuously, or stop (also a single shot). The scope's button does the same." />
-                                <Button Content="Single" Command="{Binding SingleCommand}"
-                                        ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full." />
-                            </StackPanel>
-                            <TextBlock Text="{Binding RunMode}" Foreground="Gray" Margin="0,4,0,0" />
+                        <ScrollViewer.Resources>
+                            <!-- One card per group of settings -->
+                            <Style x:Key="Card" TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="6" />
+                                <Setter Property="Padding" Value="12,8" />
+                                <Setter Property="Margin" Value="0,0,0,8" />
+                            </Style>
+                            <Style x:Key="CardHeader" TargetType="TextBlock">
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Margin" Value="0,0,0,8" />
+                            </Style>
+                            <Style x:Key="RowLabel" TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                                <Setter Property="Margin" Value="0,0,8,0" />
+                            </Style>
+                            <!-- A row of radio buttons that look like toggle buttons -->
+                            <Style x:Key="Segment" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                <Setter Property="Padding" Value="0,5" />
+                                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                            </Style>
+                            <Style x:Key="Step" TargetType="RepeatButton" BasedOn="{StaticResource {x:Type RepeatButton}}">
+                                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                                <Setter Property="FontSize" Value="10" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Width" Value="28" />
+                                <Setter Property="VerticalAlignment" Value="Stretch" />
+                                <Setter Property="Margin" Value="4,0,0,0" />
+                            </Style>
+                            <Style x:Key="EdgeIcon" TargetType="Path">
+                                <Setter Property="Width" Value="22" />
+                                <Setter Property="Height" Value="16" />
+                                <Setter Property="Margin" Value="0,2" />
+                                <Setter Property="StrokeThickness" Value="1.5" />
+                                <Setter Property="StrokeLineJoin" Value="Round" />
+                                <Setter Property="StrokeStartLineCap" Value="Round" />
+                                <Setter Property="StrokeEndLineCap" Value="Round" />
+                                <Setter Property="Stroke" Value="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
+                            </Style>
+                            <Style x:Key="Entry" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                <EventSetter Event="KeyDown" Handler="OnEntryKeyDown" />
+                                <EventSetter Event="GotKeyboardFocus" Handler="OnEntryFocused" />
+                                <Setter Property="HorizontalContentAlignment" Value="Right" />
+                                <Setter Property="VerticalContentAlignment" Value="Center" />
+                                <Setter Property="MinWidth" Value="0" />
+                            </Style>
+                        </ScrollViewer.Resources>
 
-                            <TextBlock Text="Vertical" Style="{StaticResource SectionHeader}" />
-                            <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" />
-                            <CheckBox Content="DC coupling" IsChecked="{Binding DcCoupled}" Margin="0,6,0,0" />
-                            <DockPanel Margin="0,6,0,0" ToolTip="Voltage at the screen centre. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the green ground marker on the screen.">
-                                <TextBlock Text="Offset" Style="{StaticResource Label}" Width="40" />
-                                <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroOffsetCommand}" Padding="8,0" Margin="4,0,0,0" />
-                                <RepeatButton DockPanel.Dock="Right" Content="+" Command="{Binding OffsetUpCommand}" Padding="8,0" Margin="4,0,0,0" />
-                                <RepeatButton DockPanel.Dock="Right" Content="−" Command="{Binding OffsetDownCommand}" Padding="8,0" Margin="4,0,0,0" />
-                                <TextBox Text="{Binding OffsetText}" KeyDown="OnEntryKeyDown" GotKeyboardFocus="OnEntryFocused"
-                                         VerticalContentAlignment="Center" HorizontalContentAlignment="Right">
-                                    <TextBox.InputBindings>
-                                        <KeyBinding Key="Up" Command="{Binding OffsetUpCommand}" />
-                                        <KeyBinding Key="Down" Command="{Binding OffsetDownCommand}" />
-                                    </TextBox.InputBindings>
-                                </TextBox>
-                            </DockPanel>
+                        <StackPanel Margin="0,0,4,0" Grid.IsSharedSizeScope="True">
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="6" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Command="{Binding RunStopCommand}" Style="{StaticResource AccentButtonStyle}"
+                                                HorizontalAlignment="Stretch" Padding="0,6"
+                                                ToolTip="Run continuously, or stop (also a single shot). The scope's button does the same.">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="&#xE768;" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding RunStopText}" Value="Stop">
+                                                                    <Setter Property="Text" Value="&#xE71A;" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding RunStopText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="2" Command="{Binding SingleCommand}" HorizontalAlignment="Stretch" Padding="0,6" Margin="0"
+                                                ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full.">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                <TextBlock Text="Single" />
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock Text="{Binding RunMode}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </Border>
 
-                            <TextBlock Text="Horizontal" Style="{StaticResource SectionHeader}" />
-                            <ComboBox ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" />
-                            <TextBlock Text="Frame size" Style="{StaticResource Label}" />
-                            <ComboBox ItemsSource="{Binding FrameSizes}" SelectedItem="{Binding FrameSize}" ItemStringFormat="{}{0} samples"
-                                      IsEnabled="{Binding HasTrigger}"
-                                      ToolTip="Samples per frame. 512 fills the screen; larger frames cover more time and are shown whole (zoom in with +), but take longer to capture and send (4096: about 2 s per frame)." />
+                            <Border Style="{StaticResource Card}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="6" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="6" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.ColumnSpan="2" Text="Vertical" Style="{StaticResource CardHeader}" />
 
-                            <TextBlock Text="Trigger" Style="{StaticResource SectionHeader}" />
-                            <StackPanel IsEnabled="{Binding HasTrigger}">
-                                <ComboBox ItemsSource="{Binding TriggerEdges}" SelectedItem="{Binding TriggerEdge}" />
-                                <CheckBox Content="Auto trigger" IsChecked="{Binding AutoTrigger}" Margin="0,6,0,0"
-                                          ToolTip="Keep acquiring when no edge is found" />
-                                <CheckBox Content="Noise reject" IsChecked="{Binding NoiseReject}" Margin="0,4,0,0"
-                                          ToolTip="Only applies to a single edge" />
-                                <DockPanel Margin="0,6,0,0" ToolTip="Trigger level in volts. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the orange trigger line on the screen.">
-                                    <TextBlock Text="Level" Style="{StaticResource Label}" Width="40" />
-                                    <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroTriggerLevelCommand}" Padding="8,0" Margin="4,0,0,0" />
-                                    <RepeatButton DockPanel.Dock="Right" Content="+" Command="{Binding TriggerLevelUpCommand}" Padding="8,0" Margin="4,0,0,0" />
-                                    <RepeatButton DockPanel.Dock="Right" Content="−" Command="{Binding TriggerLevelDownCommand}" Padding="8,0" Margin="4,0,0,0" />
-                                    <TextBox Text="{Binding TriggerLevelText}" KeyDown="OnEntryKeyDown" GotKeyboardFocus="OnEntryFocused"
-                                             VerticalContentAlignment="Center" HorizontalContentAlignment="Right">
-                                        <TextBox.InputBindings>
-                                            <KeyBinding Key="Up" Command="{Binding TriggerLevelUpCommand}" />
-                                            <KeyBinding Key="Down" Command="{Binding TriggerLevelDownCommand}" />
-                                        </TextBox.InputBindings>
-                                    </TextBox>
-                                </DockPanel>
-                            </StackPanel>
+                                    <TextBlock Grid.Row="1" Text="Range" Style="{StaticResource RowLabel}" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" HorizontalAlignment="Stretch" />
+
+                                    <TextBlock Grid.Row="3" Text="Coupling" Style="{StaticResource RowLabel}" />
+                                    <UniformGrid Grid.Row="3" Grid.Column="1" Rows="1">
+                                        <RadioButton GroupName="Coupling" Content="AC" Style="{StaticResource Segment}" Margin="0,0,2,0"
+                                                     IsChecked="{Binding DcCoupled, Converter={StaticResource ValueEquals}, ConverterParameter={StaticResource False}}" />
+                                        <RadioButton GroupName="Coupling" Content="DC" Style="{StaticResource Segment}" Margin="2,0,0,0"
+                                                     IsChecked="{Binding DcCoupled, Converter={StaticResource ValueEquals}, ConverterParameter={StaticResource True}}" />
+                                    </UniformGrid>
+
+                                    <TextBlock Grid.Row="5" Text="Offset" Style="{StaticResource RowLabel}" />
+                                    <DockPanel Grid.Row="5" Grid.Column="1"
+                                               ToolTip="Voltage at the screen centre. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division; 0 centres the ground. Or drag the green ground marker on the screen.">
+                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE845;" Command="{Binding ZeroOffsetCommand}" Style="{StaticResource Step}" ToolTip="Zero" />
+                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE710;" Command="{Binding OffsetUpCommand}" Style="{StaticResource Step}" />
+                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE738;" Command="{Binding OffsetDownCommand}" Style="{StaticResource Step}" />
+                                        <TextBox Text="{Binding OffsetText}" Style="{StaticResource Entry}">
+                                            <TextBox.InputBindings>
+                                                <KeyBinding Key="Up" Command="{Binding OffsetUpCommand}" />
+                                                <KeyBinding Key="Down" Command="{Binding OffsetDownCommand}" />
+                                            </TextBox.InputBindings>
+                                        </TextBox>
+                                    </DockPanel>
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="6" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.ColumnSpan="2" Text="Horizontal" Style="{StaticResource CardHeader}" />
+
+                                    <TextBlock Grid.Row="1" Text="Time" Style="{StaticResource RowLabel}" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" HorizontalAlignment="Stretch" />
+
+                                    <TextBlock Grid.Row="3" Text="Frame" Style="{StaticResource RowLabel}" />
+                                    <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding FrameSizes}" SelectedItem="{Binding FrameSize}" ItemStringFormat="{}{0} samples"
+                                              IsEnabled="{Binding HasTrigger}" HorizontalAlignment="Stretch"
+                                              ToolTip="Samples per frame. 512 fills the screen; larger frames cover more time and are shown whole (zoom in with +), but take longer to capture and send (4096: about 2 s per frame)." />
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <Grid IsEnabled="{Binding HasTrigger}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="6" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="8" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.ColumnSpan="2" Text="Trigger" Style="{StaticResource CardHeader}" />
+
+                                    <TextBlock Grid.Row="1" Text="Edge" Style="{StaticResource RowLabel}" />
+                                    <UniformGrid Grid.Row="1" Grid.Column="1" Rows="1">
+                                        <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="0,0,2,0" ToolTip="Rising edge"
+                                                     IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Rising}}">
+                                            <Path Style="{StaticResource EdgeIcon}" Data="M1,14 H9 V2 H21 M5.5,8.5 L9,5 L12.5,8.5" />
+                                        </RadioButton>
+                                        <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="2,0,2,0" ToolTip="Falling edge"
+                                                     IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Falling}}">
+                                            <Path Style="{StaticResource EdgeIcon}" Data="M1,2 H9 V14 H21 M5.5,7.5 L9,11 L12.5,7.5" />
+                                        </RadioButton>
+                                        <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="2,0,0,0" ToolTip="Either edge"
+                                                     IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Both}}">
+                                            <Path Style="{StaticResource EdgeIcon}" Data="M1,14 H5 V2 H17 V14 H21 M2,8 L5,5 L8,8 M14,8 L17,11 L20,8" />
+                                        </RadioButton>
+                                    </UniformGrid>
+
+                                    <TextBlock Grid.Row="3" Text="Level" Style="{StaticResource RowLabel}" />
+                                    <DockPanel Grid.Row="3" Grid.Column="1"
+                                               ToolTip="Trigger level in volts. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the orange trigger line on the screen.">
+                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE845;" Command="{Binding ZeroTriggerLevelCommand}" Style="{StaticResource Step}" ToolTip="Zero" />
+                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE710;" Command="{Binding TriggerLevelUpCommand}" Style="{StaticResource Step}" />
+                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE738;" Command="{Binding TriggerLevelDownCommand}" Style="{StaticResource Step}" />
+                                        <TextBox Text="{Binding TriggerLevelText}" Style="{StaticResource Entry}">
+                                            <TextBox.InputBindings>
+                                                <KeyBinding Key="Up" Command="{Binding TriggerLevelUpCommand}" />
+                                                <KeyBinding Key="Down" Command="{Binding TriggerLevelDownCommand}" />
+                                            </TextBox.InputBindings>
+                                        </TextBox>
+                                    </DockPanel>
+
+                                    <UniformGrid Grid.Row="5" Grid.ColumnSpan="2" Rows="1">
+                                        <CheckBox Content="Auto" IsChecked="{Binding AutoTrigger}"
+                                                  ToolTip="Auto trigger: keep acquiring when no edge is found" />
+                                        <CheckBox Content="Noise reject" IsChecked="{Binding NoiseReject}"
+                                                  ToolTip="Only applies to a single edge" />
+                                    </UniformGrid>
+                                </Grid>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -265,7 +428,7 @@
 
                     <DockPanel Grid.Row="2">
                         <DockPanel DockPanel.Dock="Top" Margin="0,12,0,4">
-                            <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearLogCommand}" Margin="0" Padding="8,0" />
+                            <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearLogCommand}" Margin="0" Padding="10,4" />
                             <TextBlock Text="Log" FontWeight="SemiBold" />
                         </DockPanel>
                         <ListBox x:Name="LogList" ItemsSource="{Binding Log}" FontFamily="Consolas"

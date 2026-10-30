@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -9,7 +10,9 @@ namespace Aeroscope.App.Controls;
 /// Scope screen: 10 x 8 division grid, the trace, a ground marker (0 V) on the left,
 /// the trigger level on the right and the trigger time at the top (unless <see cref="ShowTrigger"/> is off).
 /// A second, blue level marker shows the trigger level the shown frame was taken with.
-/// The ground marker (the offset) and the trigger level can be dragged with the mouse.
+/// The ground marker (the offset) and the trigger level can be dragged with the mouse. Clicking
+/// anywhere else places a cursor: a vertical line on the nearest measured sample, labelled with
+/// its time and voltage; dragging moves it and a right-click removes it.
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
@@ -21,6 +24,7 @@ public sealed class WaveformView : FrameworkElement
     public static readonly DependencyProperty ShowTriggerProperty = Register(nameof(ShowTrigger), true);
     public static readonly DependencyProperty FrameTriggerLevelVoltsProperty = Register<double?>(nameof(FrameTriggerLevelVolts), null);
     public static readonly DependencyProperty CentreSecondsProperty = Register(nameof(CentreSeconds), 0.0);
+    public static readonly DependencyProperty CursorSecondsProperty = Register<double?>(nameof(CursorSeconds), null);
 
     private const double MarkerSize = 7;
 
@@ -46,6 +50,11 @@ public sealed class WaveformView : FrameworkElement
     private static readonly Pen TriggerLevelPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0xF2, 0x8C, 0x38))), 1) { DashStyle = DashStyles.Dash });
     private static readonly Brush FrameTriggerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x5C, 0xA8, 0xF2)));
     private static readonly Pen FrameTriggerLevelPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0x5C, 0xA8, 0xF2))), 1) { DashStyle = DashStyles.Dash });
+    private static readonly Pen CursorPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0xC0, 0xE6, 0xE9, 0xED))), 1));
+    private static readonly Pen CursorMarkerPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0xE6, 0xE9, 0xED))), 1.5));
+    private static readonly Brush CursorLabelBackground = Frozen(new SolidColorBrush(Color.FromArgb(0xD0, 0x2B, 0x31, 0x38)));
+    private static readonly Brush CursorTextBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xE6, 0xE9, 0xED)));
+    private static readonly Typeface CursorTypeface = new("Consolas");
 
     /// <summary>The traces to draw, with times relative to the screen centre.</summary>
     public IReadOnlyList<Waveform>? Traces
@@ -100,6 +109,13 @@ public sealed class WaveformView : FrameworkElement
         set => SetValue(FrameTriggerLevelVoltsProperty, value);
     }
 
+    /// <summary>Where the cursor is, in the traces' time; null for no cursor. Kept while new frames arrive.</summary>
+    public double? CursorSeconds
+    {
+        get => (double?)GetValue(CursorSecondsProperty);
+        set => SetValue(CursorSecondsProperty, value);
+    }
+
     private ScreenMapping Map => new(RenderSize.Width, RenderSize.Height, VoltsPerDivision, SecondsPerDivision, CentreVolts, CentreSeconds);
 
     /// <summary>What the mouse would drag at this point: the ground marker, or the trigger level (its marker or anywhere along its line).</summary>
@@ -133,12 +149,35 @@ public sealed class WaveformView : FrameworkElement
         }
     }
 
+    /// <summary>Puts the cursor at a point across the screen (kept on the screen).</summary>
+    public void PlaceCursor(double x)
+    {
+        var map = Map;
+        CursorSeconds = map.SecondsAt(Math.Clamp(x, 0, map.Width));
+    }
+
+    /// <summary>
+    /// The cursor's label: the time (from the trigger, so not in roll mode) and voltage of the
+    /// sample nearest the cursor, or "No data" where there is none.
+    /// </summary>
+    public static string CursorLabel(IEnumerable<Waveform>? traces, double seconds, bool withTime)
+        => Waveform.SampleNear(traces ?? [], seconds) is { } sample
+            ? withTime ? $"{Units.Seconds(sample.Time)}\n{Units.Volts(sample.Volts)}" : Units.Volts(sample.Volts)
+            : "No data";
+
     private double Snapped(double volts) => Math.Round(volts / (VoltsPerDivision * DragStep)) * VoltsPerDivision * DragStep;
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
-        _dragging = HandleAt(e.GetPosition(this));
-        if (_dragging != DragHandle.None && CaptureMouse())
+        var position = e.GetPosition(this);
+        _dragging = HandleAt(position);
+        if (_dragging == DragHandle.None)
+        {
+            _dragging = DragHandle.Cursor;
+            PlaceCursor(position.X);
+        }
+
+        if (CaptureMouse())
         {
             e.Handled = true;
         }
@@ -146,15 +185,31 @@ public sealed class WaveformView : FrameworkElement
         base.OnMouseLeftButtonDown(e);
     }
 
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        CursorSeconds = null;
+        e.Handled = true;
+        base.OnMouseRightButtonDown(e);
+    }
+
     protected override void OnMouseMove(MouseEventArgs e)
     {
         var position = e.GetPosition(this);
-        if (_dragging != DragHandle.None)
+        if (_dragging == DragHandle.Cursor)
+        {
+            PlaceCursor(position.X);
+        }
+        else if (_dragging != DragHandle.None)
         {
             DragTo(_dragging, position.Y);
         }
 
-        Cursor = (_dragging != DragHandle.None ? _dragging : HandleAt(position)) != DragHandle.None ? Cursors.SizeNS : null;
+        Cursor = (_dragging != DragHandle.None ? _dragging : HandleAt(position)) switch
+        {
+            DragHandle.Offset or DragHandle.TriggerLevel => Cursors.SizeNS,
+            DragHandle.Cursor => Cursors.SizeWE,
+            _ => Cursors.Cross,
+        };
         base.OnMouseMove(e);
     }
 
@@ -198,6 +253,11 @@ public sealed class WaveformView : FrameworkElement
             DrawTrace(dc, map, waveform);
         }
 
+        if (CursorSeconds is { } cursor)
+        {
+            DrawCursor(dc, map, cursor);
+        }
+
         DrawGroundMarker(dc, map);
         if (ShowTrigger)
         {
@@ -205,6 +265,32 @@ public sealed class WaveformView : FrameworkElement
         }
 
         dc.Pop();
+    }
+
+    /// <summary>The cursor line on the nearest sample, a ring on the trace there, and the label at the top beside the line.</summary>
+    private void DrawCursor(DrawingContext dc, ScreenMapping map, double seconds)
+    {
+        var sample = Waveform.SampleNear(Traces ?? [], seconds);
+        var x = map.X(sample?.Time ?? seconds);
+        if (x < 0 || x > map.Width)
+        {
+            return; // panned away; it comes back with the view
+        }
+
+        dc.DrawLine(CursorPen, new Point(Snap(x), 0), new Point(Snap(x), map.Height));
+        if (sample is { } s)
+        {
+            dc.DrawEllipse(TracePen.Brush, CursorMarkerPen, new Point(x, Math.Clamp(map.Y(s.Volts), 0, map.Height)), 4, 4);
+        }
+
+        var label = new FormattedText(CursorLabel(Traces, seconds, withTime: ShowTrigger), CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, CursorTypeface, 12, CursorTextBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        const double gap = 6, padding = 4;
+        var width = label.Width + 2 * padding;
+        var left = x + gap + width <= map.Width ? x + gap : x - gap - width; // flips to the left near the right edge
+        var box = new Rect(left, gap, width, label.Height + 2 * padding);
+        dc.DrawRoundedRectangle(CursorLabelBackground, null, box, 3, 3);
+        dc.DrawText(label, new Point(box.X + padding, box.Y + padding));
     }
 
     private static void DrawGrid(DrawingContext dc, ScreenMapping map)
@@ -325,4 +411,5 @@ public sealed class WaveformView : FrameworkElement
                 | (twoWay ? FrameworkPropertyMetadataOptions.BindsTwoWayByDefault : 0)));
 }
 
-public enum DragHandle { None, Offset, TriggerLevel }
+/// <summary>What a mouse drag moves; <see cref="Cursor"/> is anywhere else on the screen.</summary>
+public enum DragHandle { None, Offset, TriggerLevel, Cursor }

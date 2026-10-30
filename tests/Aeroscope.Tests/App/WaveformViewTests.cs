@@ -371,6 +371,62 @@ public class WaveformViewTests
     }
 
     [Fact]
+    public void Clicking_anywhere_else_places_the_cursor_at_that_time()
+    {
+        WithView(view =>
+        {
+            view.SecondsPerDivision = 1e-6;
+            Assert.Equal(DragHandle.None, view.HandleAt(new Point(375, 300))); // not a marker: the cursor
+
+            view.PlaceCursor(375);
+
+            Assert.Equal(2.5e-6, view.CursorSeconds!.Value, precision: 15); // 2.5 divisions right of the trigger
+
+            view.CentreSeconds = 1e-6; // panned: the screen shows other times
+            view.PlaceCursor(-20); // kept on the screen
+            Assert.Equal(-4e-6, view.CursorSeconds!.Value, precision: 15);
+        });
+    }
+
+    [Fact]
+    [UseInvariantCulture]
+    public void Cursor_label_shows_the_nearest_sample()
+    {
+        Waveform[] traces = [new([0.25, 1.5, -0.04], SampleInterval: 1e-6, FirstSampleTime: -1e-6)];
+
+        Assert.Equal("0 s\n1.50 V",WaveformView.CursorLabel(traces, 0.3e-6, withTime: true));
+        Assert.Equal("1.00 µs\n-40.0 mV", WaveformView.CursorLabel(traces, 0.9e-6, withTime: true));
+        Assert.Equal("-40.0 mV", WaveformView.CursorLabel(traces, 0.9e-6, withTime: false)); // roll mode: no trigger to time from
+        Assert.Equal("No data", WaveformView.CursorLabel(traces, 5e-6, withTime: true));
+        Assert.Equal("No data", WaveformView.CursorLabel(null, 0, withTime: true));
+    }
+
+    [Fact]
+    public void Cursor_is_a_line_through_the_screen_on_the_nearest_sample()
+    {
+        static bool IsCursor(Color c) => c.R > 150 && c.G > 150 && c.B > 150;
+
+        var pixels = Render(view =>
+        {
+            view.Traces = [new Waveform(Enumerable.Repeat(2.0, 512).ToArray(), 10e-9, -2.56e-6)];
+            view.SecondsPerDivision = 0.5e-6;
+            view.CursorSeconds = 1.004e-6; // nearest sample 1.00 µs: two divisions right, x = 350
+        });
+
+        Assert.True(AnyInColumn(pixels, 350, 300, 390, IsCursor));
+        Assert.False(AnyInColumn(pixels, 360, 300, 390, IsCursor));
+        Assert.True(AnyInColumn(pixels, 352, 96, 104, IsTrace)); // the ring on the trace at 2 V (y = 100)
+    }
+
+    [Fact]
+    public void No_cursor_until_placed()
+    {
+        var pixels = Render(view => view.Traces = [new Waveform(Enumerable.Repeat(2.0, 512).ToArray(), 10e-9, -2.56e-6)]);
+
+        Assert.DoesNotContain(Enumerable.Range(0, Width), x => AnyInColumn(pixels, x, 300, 390, c => c.R > 150 && c.G > 150 && c.B > 150));
+    }
+
+    [Fact]
     public void Dragging_the_trigger_line_sets_the_level_where_it_is_dropped()
     {
         WithView(view =>

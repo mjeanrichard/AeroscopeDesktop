@@ -116,7 +116,7 @@
                                                SecondsPerDivision="{Binding ViewSecondsPerDivision}"
                                                CentreSeconds="{Binding ViewCentreSeconds}"
                                                MouseWheel="OnScreenMouseWheel"
-                                               ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with. Drag the green ground marker to move the offset, the orange trigger line to set the level."
+                                               ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with. Drag the green ground marker to move the offset, the orange trigger line to set the level. Click anywhere else for a cursor showing the measured value there; drag it to move it, right-click to remove it."
                                                CentreVolts="{Binding OffsetVolts}"
                                                TriggerLevelVolts="{Binding TriggerLevelVolts}"
                                                FrameTriggerLevelVolts="{Binding FrameTriggerLevelVolts}"

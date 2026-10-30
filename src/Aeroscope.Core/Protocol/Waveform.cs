@@ -16,6 +16,24 @@ public sealed record Waveform(double[] Volts, double SampleInterval, double Firs
 
     public double TimeOf(int index) => FirstSampleTime + index * SampleInterval;
 
+    /// <summary>
+    /// The measured sample nearest a time, in whichever of the traces covers it; null in a gap
+    /// between traces or more than half a sample interval beyond their ends.
+    /// </summary>
+    public static (double Time, double Volts)? SampleNear(IEnumerable<Waveform> traces, double seconds)
+    {
+        foreach (var trace in traces)
+        {
+            var index = (int)Math.Round((seconds - trace.FirstSampleTime) / trace.SampleInterval, MidpointRounding.AwayFromZero);
+            if (index >= 0 && index < trace.Volts.Length)
+            {
+                return (trace.TimeOf(index), trace.Volts[index]);
+            }
+        }
+
+        return null;
+    }
+
     public double Minimum => Volts.Min();
 
     public double Maximum => Volts.Max();

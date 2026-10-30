@@ -110,6 +110,20 @@ internal static class Captures
     /// </summary>
     public const string NormalTrigger = "26-normal-trigger.txt";
 
+    /// <summary>
+    /// Probe tip shorted to its ground lead, offset DAC at mid-scale. Uncalibrated: QC answers "C"
+    /// and zeros, and 2 frames per range from 100 mV to 10 V read codes 205.6, 168.2, 146.5, 138.5,
+    /// 135.0, 132.0, 131.0. CF (the Android app's calibrate) answers 1.2 s later with the offsets;
+    /// QC repeats them, and the same frames then all read 126.5-128 (the scope corrects itself).
+    /// </summary>
+    public const string Calibration = "27-calibration.txt";
+
+    /// <summary>
+    /// Probe tip shorted, calibrated: CX (no reply) clears the calibration, QC answers zeros and
+    /// 1 V/div reads 138.5 again; CF calibrates again (1 V offset 245 this time) and it reads 126.4.
+    /// </summary>
+    public const string CalibrationClear = "28-calibration-clear.txt";
+
     /// <summary>QTI, QP, QVR, QC, QE and their replies.</summary>
     public const string Startup = "01-startup.txt";
 

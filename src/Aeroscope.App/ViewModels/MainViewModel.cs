@@ -98,6 +98,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(SendCommandCommand), nameof(SendCustomCommandCommand), nameof(SendSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CalibrateCommand), nameof(ClearCalibrationCommand))]
     public partial ConnectionState State { get; set; }
 
     public bool IsDisconnected => State == ConnectionState.Disconnected;
@@ -290,6 +291,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Same start-up queries as the Android app; the scope answers "PF" once its FPGA is ready.
             await SendCommandAsync("QTI");
             await SendCommandAsync("QP");
+            await SendCommandAsync("QC");
         }
         catch (Exception ex)
         {
@@ -321,6 +323,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand(CanExecute = nameof(IsConnected))]
     private Task SendCustomCommandAsync() => SendCommandAsync(CustomCommand);
+
+    /// <summary>
+    /// Runs the scope's zero-offset calibration ("CF", as the Android app); the input must be at 0 V.
+    /// The scope answers with the offsets about a second later and applies them itself.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsConnected))]
+    private async Task CalibrateAsync()
+    {
+        if (Acquisition.RunMode != RunMode.Stopped)
+        {
+            await Acquisition.StopCommand.ExecuteAsync(null);
+        }
+
+        Scope.CalibrationStarted();
+        await SendCommandAsync("CF");
+    }
+
+    /// <summary>Clears the stored calibration ("CX", which gets no reply), then asks for it to show the result.</summary>
+    [RelayCommand(CanExecute = nameof(IsConnected))]
+    private async Task ClearCalibrationAsync()
+    {
+        await SendCommandAsync("CX");
+        await SendCommandAsync("QC");
+    }
 
     /// <summary>Writes the FPGA registers for the current acquisition settings.</summary>
     [RelayCommand(CanExecute = nameof(IsConnected))]

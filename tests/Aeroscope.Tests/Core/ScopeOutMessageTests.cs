@@ -15,7 +15,7 @@ public class ScopeOutMessageTests
             m => Assert.Equal(new PowerStateMessage(FullyOn: true), m),
             m => Assert.Equal(new PowerStateMessage(FullyOn: true), m),
             m => Assert.IsType<VersionMessage>(m),
-            m => Assert.IsType<UnknownMessage>(m),
+            m => Assert.False(Assert.IsType<CalibrationMessage>(m).IsCalibrated),
             m => Assert.IsType<ErrorLogMessage>(m));
     }
 
@@ -106,22 +106,36 @@ public class ScopeOutMessageTests
     }
 
     [Fact]
-    public void Calibration_result_per_spec_layout()
+    public void Calibration_reply_from_the_real_scope()
     {
-        var message = Assert.IsType<CalibrationMessage>(
-            ScopeOutMessage.Parse(Captures.Packet("43 42 00 0A FF F6 00 00 00 01 00 02 00 03 01 00")));
+        // The reply to CF, then QC: one offset per range, 100 mV first (not the spec's "CB" layout).
+        var replies = Captures.Packets(Captures.Calibration, CaptureChannel.Out)
+            .Select(ScopeOutMessage.Parse).OfType<CalibrationMessage>().ToList();
 
-        Assert.Equal([10, -10, 0, 1, 2, 3, 256], message.Offsets);
-        Assert.StartsWith("Calibration: 10V 10, 5V -10", message.ToString());
+        Assert.Equal(3, replies.Count);
+        Assert.False(replies[0].IsCalibrated);
+        Assert.Equal([156, 166, 193, 224, 326, 512, 819], replies[1].Offsets);
+        Assert.Equal(replies[1].Offsets, replies[2].Offsets);
+        Assert.Equal("Calibration (DAC counts): 100 mV 156, 200 mV 166, 500 mV 193, 1 V 224, 2 V 326, 5 V 512, 10 V 819",
+            replies[1].ToString());
     }
 
     [Fact]
-    public void Calibration_query_reply_from_real_scope_is_not_the_spec_format()
+    public void Uncalibrated_scope_answers_zeros()
     {
-        // QC answers "C" plus zeros on firmware rev 5, not "CB" + offsets as the spec describes.
-        var message = Assert.IsType<UnknownMessage>(ScopeOutMessage.Parse(Captures.Packet("43")));
+        var message = Assert.IsType<CalibrationMessage>(ScopeOutMessage.Parse(Captures.Packet("43")));
 
-        Assert.Equal("Unrecognised 'C' message", message.ToString());
+        Assert.False(message.IsCalibrated);
+        Assert.Equal("Calibration: none", message.ToString());
+    }
+
+    [Fact]
+    public void Offsets_are_signed()
+    {
+        // Synthetic: the scope has only reported positive offsets so far.
+        var message = Assert.IsType<CalibrationMessage>(ScopeOutMessage.Parse(Captures.Packet("43 00 00 00 00 FF F6")));
+
+        Assert.Equal(-10, message.Offsets[0]);
     }
 
     [Fact]

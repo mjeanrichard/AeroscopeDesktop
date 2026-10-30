@@ -31,8 +31,10 @@ public abstract record ScopeOutMessage
             'B' => new ButtonPressedMessage(),
             'E' when packet.Length >= 3 && packet[1] == 'C' => new CriticalErrorMessage(packet[2]),
             'E' => new ErrorLogMessage(packet.Skip(1).Where(code => code != 0).ToArray()),
-            'C' when packet.Length >= 16 && packet[1] == 'B' => new CalibrationMessage(
-                Enumerable.Range(0, 7).Select(i => BinaryPrimitives.ReadInt16BigEndian(packet.AsSpan(2 + i * 2))).ToArray()),
+            'C' when packet.Length >= CalibrationMessage.Length => new CalibrationMessage(
+                Enumerable.Range(0, VoltageRange.All.Count)
+                    .Select(i => BinaryPrimitives.ReadInt16BigEndian(packet.AsSpan(CalibrationMessage.FirstOffset + i * 2)))
+                    .ToArray()),
             _ => new UnknownMessage(packet),
         };
     }
@@ -74,15 +76,22 @@ public sealed record ErrorLogMessage(byte[] Codes) : ScopeOutMessage
 }
 
 /// <summary>
-/// DAC offset corrections from the calibration routine, one per range from 10 V down to 100 mV.
-/// Signedness is not stated in the spec; read as signed since they are corrections.
+/// The scope's zero-offset calibration, sent after "CF" and in answer to "QC": "C", four zero
+/// bytes, then a 16-bit big-endian DAC correction per range from 100 mV up to 10 V (the order of
+/// <see cref="VoltageRange.All"/>), all zero when not calibrated. Not the spec's "CB" layout
+/// (captures 27, 28). The scope applies the corrections itself.
 /// </summary>
 public sealed record CalibrationMessage(short[] Offsets) : ScopeOutMessage
 {
-    private static readonly string[] Ranges = ["10V", "5V", "2V", "1V", "500mV", "200mV", "100mV"];
+    internal const int FirstOffset = 5;
+    internal const int Length = FirstOffset + 7 * 2;
+
+    public bool IsCalibrated => Offsets.Any(offset => offset != 0);
 
     public override string ToString()
-        => "Calibration: " + string.Join(", ", Ranges.Zip(Offsets, (range, offset) => $"{range} {offset}"));
+        => IsCalibrated
+            ? "Calibration (DAC counts): " + string.Join(", ", VoltageRange.All.Zip(Offsets, (range, offset) => $"{range.Name} {offset}"))
+            : "Calibration: none";
 }
 
 public sealed record UnknownMessage(byte[] Packet) : ScopeOutMessage

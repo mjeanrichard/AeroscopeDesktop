@@ -24,6 +24,9 @@ public partial class ScopeStatus : ObservableObject
     public partial string Firmware { get; set; } = Unknown;
 
     [ObservableProperty]
+    public partial string Calibration { get; set; } = Unknown;
+
+    [ObservableProperty]
     public partial string SerialNumber { get; set; } = Unknown;
 
     [ObservableProperty]
@@ -45,6 +48,11 @@ public partial class ScopeStatus : ObservableObject
                 BatteryLevel = $"Raw level {telemetry.BatteryLevel} ({BatteryState(telemetry.BatteryLevel)})";
                 Temperature = $"{telemetry.TemperatureCelsius:0.0} °C";
                 break;
+            case CalibrationMessage calibration:
+                Calibration = calibration.IsCalibrated
+                    ? "DAC offsets " + string.Join(", ", VoltageRange.All.Zip(calibration.Offsets, (range, offset) => $"{range.Name} {offset}"))
+                    : "Not calibrated";
+                break;
             case VersionMessage version:
                 Firmware = $"MCU {version.FirmwareRevision}, FPGA {version.FpgaRevision}, HW {version.HardwareId}";
                 SerialNumber = version.SerialNumber.ToString();
@@ -58,9 +66,11 @@ public partial class ScopeStatus : ObservableObject
         LastFrame = frame.ToString();
     }
 
+    public void CalibrationStarted() => Calibration = "Calibrating...";
+
     public void Reset()
     {
-        Power = Battery = BatteryLevel = Temperature = Firmware = SerialNumber = LastFrame = Unknown;
+        Power = Battery = BatteryLevel = Temperature = Firmware = Calibration = SerialNumber = LastFrame = Unknown;
         FramesReceived = 0;
     }
 

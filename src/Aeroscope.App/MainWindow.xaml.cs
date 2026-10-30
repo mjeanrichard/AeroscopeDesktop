@@ -14,6 +14,11 @@ public partial class MainWindow : Window
     public static readonly RoutedUICommand ShowConnection =
         new("_Connection...", nameof(ShowConnection), typeof(MainWindow), [new KeyGesture(Key.K, ModifierKeys.Control)]);
 
+    /// <summary>Runs the scope's calibration after asking for a shorted input.</summary>
+    public static readonly RoutedUICommand Calibrate = new("_Calibrate...", nameof(Calibrate), typeof(MainWindow));
+
+    public static readonly RoutedUICommand ClearCalibration = new("C_lear calibration...", nameof(ClearCalibration), typeof(MainWindow));
+
     private readonly MainViewModel _viewModel = new();
     private readonly DispatcherTimer _progressTimer;
     private bool _scrollPending;
@@ -44,6 +49,34 @@ public partial class MainWindow : Window
     private void OnShowConnection(object sender, ExecutedRoutedEventArgs e) => ShowConnectionDialog();
 
     private void OnStatusDoubleClick(object sender, MouseButtonEventArgs e) => ShowConnectionDialog();
+
+    private void CanCalibrate(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _viewModel.CalibrateCommand.CanExecute(null);
+
+    private void OnCalibrate(object sender, ExecutedRoutedEventArgs e)
+    {
+        var answer = MessageBox.Show(this,
+            "Clip the probe tip to its ground lead so the input is at 0 V. An open input picks up hum.\n\n" +
+            "The scope then measures the zero offset of every range and stores it, replacing the previous calibration. " +
+            "It takes about a second.",
+            "Calibrate", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (answer == MessageBoxResult.OK)
+        {
+            _viewModel.CalibrateCommand.Execute(null);
+        }
+    }
+
+    private void CanClearCalibration(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _viewModel.ClearCalibrationCommand.CanExecute(null);
+
+    private void OnClearCalibration(object sender, ExecutedRoutedEventArgs e)
+    {
+        var answer = MessageBox.Show(this,
+            "Clear the stored calibration? The scope then shows its uncorrected zero offset (up to about 1 V at 10 V/div) until it is calibrated again.",
+            "Clear calibration", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.OK)
+        {
+            _viewModel.ClearCalibrationCommand.Execute(null);
+        }
+    }
 
     /// <summary>
     /// Keeps the newest log line in view. Scrolling is deferred: calling ScrollIntoView

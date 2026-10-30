@@ -33,6 +33,8 @@
 
     <Window.CommandBindings>
         <CommandBinding Command="local:MainWindow.ShowConnection" Executed="OnShowConnection" />
+        <CommandBinding Command="local:MainWindow.Calibrate" CanExecute="CanCalibrate" Executed="OnCalibrate" />
+        <CommandBinding Command="local:MainWindow.ClearCalibration" CanExecute="CanClearCalibration" Executed="OnClearCalibration" />
     </Window.CommandBindings>
 
     <DockPanel>
@@ -43,6 +45,10 @@
                 <Separator />
                 <MenuItem Header="_Auto-connect" IsCheckable="True" IsChecked="{Binding AutoConnect}"
                           ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
+                <Separator />
+                <MenuItem Command="local:MainWindow.Calibrate"
+                          ToolTip="Measure and store the zero offset of every range. Short the probe tip to its ground lead first." />
+                <MenuItem Command="local:MainWindow.ClearCalibration" />
             </MenuItem>
         </Menu>
 
@@ -381,7 +387,9 @@
                             <TextBlock Text="Firmware" Style="{StaticResource Label}" />
                             <TextBlock Text="{Binding Firmware}" Margin="0,0,24,0" />
                             <TextBlock Text="Serial" Style="{StaticResource Label}" />
-                            <TextBlock Text="{Binding SerialNumber}" />
+                            <TextBlock Text="{Binding SerialNumber}" Margin="0,0,24,0" />
+                            <TextBlock Text="Calibration" Style="{StaticResource Label}" />
+                            <TextBlock Text="{Binding Calibration}" />
                         </StackPanel>
                         <TextBlock Text="Characteristics" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
                         <ListView ItemsSource="{Binding Characteristics}" MinHeight="60">

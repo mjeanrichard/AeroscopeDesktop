@@ -149,7 +149,7 @@ public class MainViewModelTests
         Assert.Equal("Connected to Aeroscope", _viewModel.Status);
         Assert.Equal(FakeScopeLink.RealCharacteristics, _viewModel.Characteristics);
         Assert.Equal(
-            [(AeroscopeGatt.ScopeIn, Captures.Packet("51 54 49")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 50"))],
+            [(AeroscopeGatt.ScopeIn, Captures.Packet("51 54 49")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 50")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 43"))],
             _link.Writes.Select(w => (w.Characteristic, w.Packet)));
         Assert.False(_viewModel.ConnectCommand.CanExecute(null));
         Assert.True(_viewModel.DisconnectCommand.CanExecute(null));
@@ -574,6 +574,50 @@ public class MainViewModelTests
         Assert.False(_viewModel.SendCommandCommand.CanExecute("R"));
         Assert.False(_viewModel.SendSettingsCommand.CanExecute(null));
         Assert.False(_viewModel.SendCustomCommandCommand.CanExecute(null));
+        Assert.False(_viewModel.CalibrateCommand.CanExecute(null));
+        Assert.False(_viewModel.ClearCalibrationCommand.CanExecute(null));
+    }
+
+    // Calibration
+
+    [Fact]
+    public async Task Calibrate_sends_cf_and_shows_the_reply()
+    {
+        await ConnectToScopeAsync();
+
+        await _viewModel.CalibrateCommand.ExecuteAsync(null);
+
+        Assert.Equal(Captures.Packet("43 46"), Assert.Single(_link.Writes).Packet);
+        Assert.Equal("Calibrating...", _viewModel.Scope.Calibration);
+
+        _link.RaiseOut(Captures.Packet("43 00 00 00 00 00 9C 00 A6 00 C1 00 E0 01 46 02 00 03 33")); // capture 27
+        Assert.Equal("DAC offsets 100 mV 156, 200 mV 166, 500 mV 193, 1 V 224, 2 V 326, 5 V 512, 10 V 819", _viewModel.Scope.Calibration);
+    }
+
+    [Fact]
+    public async Task Calibrate_stops_a_run_first()
+    {
+        await ConnectToScopeAsync();
+        _link.RaiseOut(Captures.Packet("50 46"));
+        await _viewModel.Acquisition.RunStopCommand.ExecuteAsync(null);
+        _link.Writes.Clear();
+
+        await _viewModel.CalibrateCommand.ExecuteAsync(null);
+
+        Assert.Equal("SXC", new string(_link.Writes.Select(w => (char)w.Packet[0]).ToArray()));
+        Assert.Equal(RunMode.Stopped, _viewModel.Acquisition.RunMode);
+    }
+
+    [Fact]
+    public async Task Clearing_the_calibration_asks_for_it_again()
+    {
+        await ConnectToScopeAsync();
+
+        await _viewModel.ClearCalibrationCommand.ExecuteAsync(null);
+        _link.RaiseOut(Captures.Packet("43"));
+
+        Assert.Equal([Captures.Packet("43 58"), Captures.Packet("51 43")], _link.Writes.Select(w => w.Packet));
+        Assert.Equal("Not calibrated", _viewModel.Scope.Calibration);
     }
 
     [Fact]

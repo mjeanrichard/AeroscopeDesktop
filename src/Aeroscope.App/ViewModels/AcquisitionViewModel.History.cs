@@ -61,17 +61,23 @@ public partial class AcquisitionViewModel
     {
         get
         {
-            var timeBase = IsRoll ? TimeBase : ViewTimeBase;
-            var zoom = timeBase.SecondsPerDivision / _viewSecondsPerDivision;
-            var text = $"{Units.Seconds(_viewSecondsPerDivision)}/div · {Units.SampleRate(1 / timeBase.SampleInterval)}";
-            if (Math.Abs(zoom - 1) > 1e-9)
-            {
-                text += $" · ×{zoom.ToString("G3", CultureInfo.InvariantCulture)}";
-            }
-
-            return timeBase.IsRoll ? text + " · roll" : text;
+            var text = Math.Abs(ZoomFactor - 1) > 1e-9 ? $"{ViewScaleText} · {ViewRateText} · {ZoomText}" : $"{ViewScaleText} · {ViewRateText}";
+            return IsRoll ? text + " · roll" : text;
         }
     }
+
+    /// <summary>The view scale, e.g. "200 ns/div".</summary>
+    public string ViewScaleText => $"{Units.Seconds(_viewSecondsPerDivision)}/div";
+
+    /// <summary>The sample rate of the data shown, e.g. "100 MS/s" (the frame's own, in the history).</summary>
+    public string ViewRateText => Units.SampleRate(1 / ShownTimeBase.SampleInterval);
+
+    /// <summary>How much the view magnifies the data shown: "×1" at 50 samples a division.</summary>
+    public string ZoomText => $"×{ZoomFactor.ToString("G3", CultureInfo.InvariantCulture)}";
+
+    private TimeBase ShownTimeBase => IsRoll ? TimeBase : ViewTimeBase;
+
+    private double ZoomFactor => ShownTimeBase.SecondsPerDivision / _viewSecondsPerDivision;
 
     /// <summary>Time at the screen centre: 0 (the trigger) unless panned within a frame.</summary>
     public double ViewCentreSeconds => CanPan ? _framePan : 0;
@@ -301,6 +307,9 @@ public partial class AcquisitionViewModel
         OnPropertyChanged(nameof(HistoryText));
         OnPropertyChanged(nameof(ViewSecondsPerDivision));
         OnPropertyChanged(nameof(HorizontalText));
+        OnPropertyChanged(nameof(ViewScaleText));
+        OnPropertyChanged(nameof(ViewRateText));
+        OnPropertyChanged(nameof(ZoomText));
         OnPropertyChanged(nameof(ViewCentreSeconds));
         OnPropertyChanged(nameof(CanPan));
         OnPropertyChanged(nameof(FramePanMaximum));

@@ -756,6 +756,18 @@ public class AcquisitionViewModelTests
     }
 
     [Fact]
+    public async Task Horizontal_readouts_are_separate()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+        Assert.Equal(("500 ns/div", "100 MS/s", "×1"), (_viewModel.ViewScaleText, _viewModel.ViewRateText, _viewModel.ZoomText));
+
+        _viewModel.ZoomInCommand.Execute(null);
+
+        Assert.Equal(("200 ns/div", "100 MS/s", "×2.5"), (_viewModel.ViewScaleText, _viewModel.ViewRateText, _viewModel.ZoomText));
+    }
+
+    [Fact]
     public async Task Zooming_in_goes_as_far_whatever_rate_is_selected()
     {
         // A 100 MS/s frame in the history, then a slower rate: the old frame can still be zoomed into fully.

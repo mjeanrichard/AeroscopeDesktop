@@ -92,12 +92,85 @@
                         <ColumnDefinition Width="280" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
+                    <!-- Readouts above the screen, each a fixed width so nothing moves as values change -->
                     <DockPanel Grid.Row="0" Grid.Column="0">
+                        <DockPanel.Resources>
+                            <Style x:Key="Readout" TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="4" />
+                                <Setter Property="Padding" Value="6,4" />
+                                <Setter Property="Margin" Value="0,0,6,6" />
+                            </Style>
+                            <Style x:Key="ReadoutCaption" TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Setter Property="FontSize" Value="12" />
+                                <Setter Property="Margin" Value="0,0,6,0" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                            <!-- Value widths fit the longest text each can show in Consolas 13 (about 7.2 px a character) -->
+                            <Style x:Key="ReadoutValue" TargetType="TextBlock">
+                                <Setter Property="FontFamily" Value="Consolas" />
+                                <Setter Property="FontSize" Value="13" />
+                                <Setter Property="TextAlignment" Value="Right" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DockPanel.Resources>
+                        <WrapPanel>
+                            <Border Style="{StaticResource Readout}" ToolTip="Vertical scale">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="CH" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding Range}" Style="{StaticResource ReadoutValue}" Width="76" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Readout}" ToolTip="Horizontal scale of the screen (Ctrl+wheel zooms)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Time" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding ViewScaleText}" Style="{StaticResource ReadoutValue}" Width="82" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Readout}" ToolTip="Sample rate of the data shown, and how much the view magnifies it (x1 is 50 samples a division)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Rate" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding ViewRateText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                    <TextBlock Text="{Binding ZoomText}" Style="{StaticResource ReadoutValue}" Width="54"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Vpp" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding PeakToPeakText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Max" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding MaximumText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Min" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding MinimumText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Mean" Style="{StaticResource ReadoutCaption}" />
+                                    <TextBlock Text="{Binding MeanText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+                    </DockPanel>
+
+                    <DockPanel Grid.Row="1" Grid.Column="0">
                         <!-- Where the scope is in a long frame cycle -->
                         <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0" Visibility="{Binding ShowProgress, Converter={StaticResource Visible}}">
                             <TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" FontFamily="Consolas" Margin="8,0,0,0" MinWidth="230" />
@@ -124,7 +197,13 @@
                     </DockPanel>
 
                     <!-- History: scroll back through everything received while running -->
-                    <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,6,0,0">
+                    <DockPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
+                        <Button DockPanel.Dock="Right" Content="1:1" Command="{Binding ResetZoomCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Back to 50 samples a division" />
+                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Zoom in (Ctrl+wheel), down to 50 ns/div. Display only: the sample rate stays." />
+                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="18,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Zoom out (Ctrl+wheel), up to the whole frame or roll recording. Display only: the sample rate stays." />
                         <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearHistoryCommand}" Margin="6,0,0,0"
                                 ToolTip="Forget the recorded history" />
                         <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
@@ -136,31 +215,8 @@
                                    Value="{Binding HistoryPosition}" />
                     </DockPanel>
 
-                    <!-- Readouts under the screen, and the horizontal zoom (display only) -->
-                    <DockPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
-                        <Button DockPanel.Dock="Right" Content="1:1" Command="{Binding ResetZoomCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Back to 50 samples a division" />
-                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Zoom in (Ctrl+wheel), down to 5 samples a division. Display only: the sample rate stays." />
-                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Zoom out (Ctrl+wheel), up to the whole frame or roll recording. Display only: the sample rate stays." />
-                    <WrapPanel VerticalAlignment="Center">
-                        <WrapPanel.Resources>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Margin" Value="0,0,18,0" />
-                                <Setter Property="FontFamily" Value="Consolas" />
-                            </Style>
-                        </WrapPanel.Resources>
-                        <TextBlock Text="{Binding Range, StringFormat=CH {0}}" />
-                        <TextBlock Text="{Binding HorizontalText}" />
-                        <TextBlock Text="{Binding PeakToPeakText, StringFormat=Vpp {0}}" />
-                        <TextBlock Text="{Binding MaximumText, StringFormat=Max {0}}" />
-                        <TextBlock Text="{Binding MinimumText, StringFormat=Min {0}}" />
-                        <TextBlock Text="{Binding MeanText, StringFormat=Mean {0}}" />
-                    </WrapPanel>
-                    </DockPanel>
 
-                    <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
                         <ScrollViewer.Resources>
                             <!-- One card per group of settings -->
                             <Style x:Key="Card" TargetType="Border">

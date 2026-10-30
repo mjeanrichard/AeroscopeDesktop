@@ -24,6 +24,11 @@ public sealed class WaveformView : FrameworkElement
 
     private const double MarkerSize = 7;
 
+    /// <summary>Fewer samples than this to a division are drawn as dots too.</summary>
+    private const double DotsBelowSamplesPerDivision = 20;
+
+    private const double SampleDotRadius = 2;
+
     /// <summary>How close to a marker (or the trigger line) the mouse grabs it, in pixels.</summary>
     private const double GrabDistance = 8;
 
@@ -253,7 +258,23 @@ public sealed class WaveformView : FrameworkElement
 
         geometry.Freeze();
         dc.DrawGeometry(null, TracePen, geometry);
+
+        if (ShowsSampleDots(map, waveform))
+        {
+            for (var i = 0; i < waveform.Volts.Length; i++)
+            {
+                var x = map.X(waveform.TimeOf(i));
+                if (x >= -SampleDotRadius && x <= map.Width + SampleDotRadius)
+                {
+                    dc.DrawEllipse(TracePen.Brush, null, new Point(x, map.Y(waveform.Volts[i])), SampleDotRadius, SampleDotRadius);
+                }
+            }
+        }
     }
+
+    /// <summary>Zoomed in so far that the samples are drawn as dots, so the lines between them don't pass for data.</summary>
+    public static bool ShowsSampleDots(ScreenMapping map, Waveform waveform)
+        => map.SecondsPerDivision / waveform.SampleInterval < DotsBelowSamplesPerDivision;
 
     private static void DrawTriggerLevel(DrawingContext dc, ScreenMapping map, double volts, Pen line, Brush marker)
     {

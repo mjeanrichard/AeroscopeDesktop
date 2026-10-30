@@ -14,6 +14,8 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="Visible" />
         <controls:ValueEquals x:Key="ValueEquals" />
+        <controls:TimeBaseText x:Key="SampleRateText" Part="Rate" />
+        <controls:TimeBaseText x:Key="TimeBaseScaleText" Part="Scale" />
         <sys:Boolean x:Key="True">True</sys:Boolean>
         <sys:Boolean x:Key="False">False</sys:Boolean>
         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -87,7 +89,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="260" />
+                        <ColumnDefinition Width="280" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
@@ -127,10 +129,6 @@
                                 ToolTip="Forget the recorded history" />
                         <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
                                 ToolTip="Follow the newest data" />
-                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0"
-                                ToolTip="Zoom in: roll mode, or a frame wider than the screen" />
-                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="6,0,0,0"
-                                ToolTip="Zoom out: over the roll recording, or to the whole frame" />
                         <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
                         <ScrollBar Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
                                    Minimum="0" Maximum="{Binding HistoryMaximum}" ViewportSize="{Binding HistoryViewport}"
@@ -138,8 +136,15 @@
                                    Value="{Binding HistoryPosition}" />
                     </DockPanel>
 
-                    <!-- Readouts under the screen -->
-                    <WrapPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
+                    <!-- Readouts under the screen, and the horizontal zoom (display only) -->
+                    <DockPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
+                        <Button DockPanel.Dock="Right" Content="1:1" Command="{Binding ResetZoomCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Back to 50 samples a division" />
+                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Zoom in (Ctrl+wheel), down to 5 samples a division. Display only: the sample rate stays." />
+                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Zoom out (Ctrl+wheel), up to the whole frame or roll recording. Display only: the sample rate stays." />
+                    <WrapPanel VerticalAlignment="Center">
                         <WrapPanel.Resources>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Margin" Value="0,0,18,0" />
@@ -153,6 +158,7 @@
                         <TextBlock Text="{Binding MinimumText, StringFormat=Min {0}}" />
                         <TextBlock Text="{Binding MeanText, StringFormat=Mean {0}}" />
                     </WrapPanel>
+                    </DockPanel>
 
                     <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto">
                         <ScrollViewer.Resources>
@@ -217,6 +223,7 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Command="{Binding RunStopCommand}" Style="{StaticResource AccentButtonStyle}"
+                                                AutomationProperties.Name="{Binding RunStopText}"
                                                 HorizontalAlignment="Stretch" Padding="0,6"
                                                 ToolTip="Run continuously, or stop (also a single shot). The scope's button does the same.">
                                             <StackPanel Orientation="Horizontal">
@@ -236,6 +243,7 @@
                                             </StackPanel>
                                         </Button>
                                         <Button Grid.Column="2" Command="{Binding SingleCommand}" HorizontalAlignment="Stretch" Padding="0,6" Margin="0"
+                                                AutomationProperties.Name="Single"
                                                 ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full.">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -304,8 +312,19 @@
                                     </Grid.RowDefinitions>
                                     <TextBlock Grid.ColumnSpan="2" Text="Horizontal" Style="{StaticResource CardHeader}" />
 
-                                    <TextBlock Grid.Row="1" Text="Time" Style="{StaticResource RowLabel}" />
-                                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" HorizontalAlignment="Stretch" />
+                                    <TextBlock Grid.Row="1" Text="Rate" Style="{StaticResource RowLabel}" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" HorizontalAlignment="Stretch"
+                                              ToolTip="Sample rate, and the time a division shows at 1:1 (50 samples). Ctrl+wheel on the screen zooms the view without changing it.">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate DataType="core:TimeBase">
+                                                <TextBlock>
+                                                    <Run Text="{Binding Converter={StaticResource SampleRateText}, Mode=OneWay}" />
+                                                    <Run Text="{Binding Converter={StaticResource TimeBaseScaleText}, Mode=OneWay}"
+                                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" />
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
 
                                     <TextBlock Grid.Row="3" Text="Frame" Style="{StaticResource RowLabel}" />
                                     <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding FrameSizes}" SelectedItem="{Binding FrameSize}" ItemStringFormat="{}{0} samples"

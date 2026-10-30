@@ -507,19 +507,32 @@ public class AcquisitionViewModelTests
     {
         await RollingAsync();
         await RollFramesAsync(40);
-        Assert.False(_viewModel.ZoomInCommand.CanExecute(null)); // not below the time base
-        Assert.Equal("500 ms/div roll", _viewModel.HorizontalText);
+        Assert.Equal("500 ms/div · 100 S/s · roll", _viewModel.HorizontalText);
 
         _viewModel.ZoomOutCommand.Execute(null);
 
         Assert.Equal(1, _viewModel.ViewSecondsPerDivision);
-        Assert.Equal($"500 ms/div roll, view {Aeroscope.App.Units.Seconds(1)}/div", _viewModel.HorizontalText);
+        Assert.Equal("1.00 s/div · 100 S/s · ×0.5 · roll", _viewModel.HorizontalText);
         Assert.Equal(640, Trace.Volts.Length); // all 6.4 s fit on a 10 s screen
-        Assert.True(_viewModel.ZoomInCommand.CanExecute(null));
 
         _viewModel.ZoomInCommand.Execute(null);
 
         Assert.Equal(0.5, _viewModel.ViewSecondsPerDivision);
+    }
+
+    [Fact]
+    public async Task Roll_zooms_in_to_5_samples_a_division()
+    {
+        await RollingAsync();
+        await RollFramesAsync(40);
+
+        _viewModel.ZoomInCommand.Execute(null);
+        _viewModel.ZoomInCommand.Execute(null);
+        _viewModel.ZoomInCommand.Execute(null);
+
+        Assert.Equal(0.05, _viewModel.ViewSecondsPerDivision, precision: 12); // 10 ms samples
+        Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
+        Assert.Equal(TimeBase.SamplesOnScreen / 10, VisibleSamples);
     }
 
     [Fact]
@@ -653,104 +666,175 @@ public class AcquisitionViewModelTests
     }
 
     [Fact]
-    public async Task A_large_frame_is_shown_whole()
+    public async Task A_large_frame_starts_at_1_to_1_in_the_middle()
     {
         await Showing4096Async();
 
-        Assert.Equal(4096, Trace.Volts.Length);
-        Assert.Equal(8 * Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
-        Assert.Equal("500 ns/div, view 4.00 µs/div", _viewModel.HorizontalText);
-        Assert.False(_viewModel.CanPan);
-        Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
-        Assert.True(_viewModel.ZoomInCommand.CanExecute(null));
-    }
-
-    [Fact]
-    public async Task Zooming_into_a_large_frame_shows_the_middle_then_pans()
-    {
-        await Showing4096Async();
-
-        _viewModel.ZoomInCommand.Execute(null); // 4 screens
-        _viewModel.ZoomInCommand.Execute(null); // 2
-        _viewModel.ZoomInCommand.Execute(null); // 1: the time base
-
-        Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
+        Assert.Equal(4096, Trace.Volts.Length); // drawn whole, the screen clips it
         Assert.Equal(Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.Equal("500 ns/div · 100 MS/s", _viewModel.HorizontalText);
         Assert.True(_viewModel.CanPan);
         Assert.Equal(0, _viewModel.ViewCentreSeconds);
-        Assert.InRange(Trace.Volts.Length, 500, 502); // one screen: 500 sample intervals
-        Assert.Equal(70 * Spd, _viewModel.FramePanMaximum, precision: 15); // 7 more screens to pan over
-        Assert.Equal(35 * Spd, _viewModel.FramePanPosition, precision: 15); // centred
-
-        _viewModel.FramePanPosition = 0; // the frame's left end
-
-        Assert.Equal(-35 * Spd, _viewModel.ViewCentreSeconds, precision: 15);
-        Assert.Equal(-40 * Spd, Trace.FirstSampleTime, tolerance: _viewModel.TimeBase.SampleInterval);
-        Assert.Equal(Trace.Volts.Max(), _viewModel.Screen!.Maximum); // readouts over what is shown
-
-        _viewModel.ZoomOutCommand.Execute(null); // 2 screens, still at the left end
-        Assert.Equal(-30 * Spd, _viewModel.ViewCentreSeconds, precision: 15);
+        Assert.Equal(4096 * _viewModel.TimeBase.SampleInterval - 10 * Spd, _viewModel.FramePanMaximum, precision: 12);
+        Assert.Equal(_viewModel.FramePanMaximum / 2, _viewModel.FramePanPosition, _viewModel.TimeBase.SampleInterval);
+        Assert.False(_viewModel.ResetZoomCommand.CanExecute(null));
     }
 
     [Fact]
-    public async Task Zooming_out_returns_to_the_whole_frame()
+    public async Task Zooming_out_a_large_frame_stops_at_the_whole_record()
     {
         await Showing4096Async();
+
+        _viewModel.ZoomOutCommand.Execute(null); // 1 µs
+        _viewModel.ZoomOutCommand.Execute(null); // 2 µs: 20 of the 41 µs
+        Assert.True(_viewModel.CanPan);
+        _viewModel.ZoomOutCommand.Execute(null); // 5 µs: all 41 µs on a 50 µs screen
+
+        Assert.Equal(5e-6, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.Equal("5.00 µs/div · 100 MS/s · ×0.1", _viewModel.HorizontalText);
+        Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
+        Assert.False(_viewModel.CanPan);
+        Assert.Equal(0, _viewModel.ViewCentreSeconds);
+    }
+
+    [Fact]
+    public async Task Zooming_keeps_a_panned_view_inside_the_frame()
+    {
+        await Showing4096Async();
+        _viewModel.FramePanPosition = 0; // the frame's left end
+        var start = Trace.FirstSampleTime;
+        Assert.Equal(start + 5 * Spd, _viewModel.ViewCentreSeconds, precision: 12);
+
+        _viewModel.ZoomOutCommand.Execute(null); // twice the width, about the centre: clamped to the left end
+
+        Assert.Equal(start + 10 * Spd, _viewModel.ViewCentreSeconds, precision: 12);
+    }
+
+    [Fact]
+    public async Task Readouts_cover_the_whole_frame_when_zoomed()
+    {
+        await Showing4096Async();
+        var whole = Trace.Volts;
+
         _viewModel.ZoomInCommand.Execute(null);
         _viewModel.FramePanPosition = 0;
 
-        _viewModel.ZoomOutCommand.Execute(null);
-
-        Assert.False(_viewModel.CanPan);
-        Assert.Equal(0, _viewModel.ViewCentreSeconds);
-        Assert.Equal(4096, Trace.Volts.Length);
+        Assert.Equal(whole.Max(), _viewModel.Screen!.Maximum);
+        Assert.Equal(whole.Min(), _viewModel.Screen.Minimum);
     }
 
     [Fact]
-    public async Task Frame_size_change_shows_the_whole_frame_again()
+    public async Task Frame_size_change_resets_to_1_to_1()
     {
         await Showing4096Async();
-        _viewModel.ZoomInCommand.Execute(null);
+        _viewModel.ZoomOutCommand.Execute(null);
 
         _viewModel.FrameSize = 2048;
         await _viewModel.OnFrameAsync(SizedFrames(2048)[0]);
 
-        Assert.Equal(4 * Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
-        Assert.False(_viewModel.CanPan);
+        Assert.Equal(Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.True(_viewModel.CanPan);
     }
 
     [Fact]
-    public async Task A_512_sample_frame_cannot_be_zoomed()
+    public async Task A_512_sample_frame_zooms_in_to_5_samples_a_division_but_not_out()
     {
         await RunningAsync();
         await HumFramesAsync(1);
+        Assert.False(_viewModel.ZoomOutCommand.CanExecute(null)); // 512 samples: one screen
+        Assert.False(_viewModel.CanPan);
 
-        Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
-        Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
+        while (_viewModel.ZoomInCommand.CanExecute(null))
+        {
+            _viewModel.ZoomInCommand.Execute(null);
+        }
+
+        Assert.Equal(5 * _viewModel.TimeBase.SampleInterval, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.Equal("50.0 ns/div · 100 MS/s · ×10", _viewModel.HorizontalText);
+        Assert.True(_viewModel.CanPan);
+        Assert.Equal(512, Trace.Volts.Length);
+    }
+
+    [Fact]
+    public async Task Zooming_in_goes_as_far_whatever_rate_is_selected()
+    {
+        // A 100 MS/s frame in the history, then a slower rate: the old frame can still be zoomed into fully.
+        await RunningAsync();
+        await HumFramesAsync(1);
+        _viewModel.TimeBase = TimeBase.All.Single(t => t.Name == "1 ms");
+        _viewModel.HistoryPosition = 0;
+
+        while (_viewModel.ZoomInCommand.CanExecute(null))
+        {
+            _viewModel.ZoomInCommand.Execute(null);
+        }
+
+        Assert.Equal(50e-9, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.Equal("50.0 ns/div · 100 MS/s · ×10", _viewModel.HorizontalText);
+    }
+
+    [Fact]
+    public async Task Roll_zooms_in_as_far_at_any_roll_rate()
+    {
+        _viewModel.TimeBase = TimeBase.All.Single(t => t.Name == "1 s");
+        await MakeReadyAsync();
+
+        while (_viewModel.ZoomInCommand.CanExecute(null))
+        {
+            _viewModel.ZoomInCommand.Execute(null);
+        }
+
+        Assert.Equal(0.05, _viewModel.ViewSecondsPerDivision, precision: 12); // 5 samples of the fastest roll rate (10 ms)
+    }
+
+    [Fact]
+    public async Task One_to_one_resets_the_zoom()
+    {
+        await RunningAsync();
+        await HumFramesAsync(1);
+        _viewModel.ZoomInCommand.Execute(null);
+        Assert.True(_viewModel.ResetZoomCommand.CanExecute(null));
+
+        _viewModel.ResetZoomCommand.Execute(null);
+
+        Assert.Equal(Spd, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.False(_viewModel.ResetZoomCommand.CanExecute(null));
         Assert.False(_viewModel.CanPan);
     }
 
     [Fact]
-    public async Task Each_frame_in_the_history_is_shown_at_its_own_size()
+    public async Task The_scale_stays_while_stepping_through_the_history()
     {
         await RunningAsync();
         await HumFramesAsync(1);
         _viewModel.FrameSize = 4096;
         await _viewModel.OnFrameAsync(SizedFrames(4096)[0]);
-        _viewModel.ZoomInCommand.Execute(null);
+        _viewModel.ZoomOutCommand.Execute(null);
 
         _viewModel.HistoryPosition = 0;
 
-        Assert.Equal(_viewModel.TimeBase.SecondsPerDivision, _viewModel.ViewSecondsPerDivision); // the 512-sample frame: one screen
+        Assert.Equal(2 * Spd, _viewModel.ViewSecondsPerDivision, precision: 15); // the 512-sample frame: half the screen
         Assert.False(_viewModel.CanPan);
     }
 
     [Fact]
-    public void Zoom_needs_roll_mode_or_a_frame_wider_than_the_screen()
+    public void Zoom_in_is_possible_from_the_start_but_not_out()
     {
+        Assert.True(_viewModel.ZoomInCommand.CanExecute(null));
         Assert.False(_viewModel.ZoomOutCommand.CanExecute(null));
-        Assert.False(_viewModel.ZoomInCommand.CanExecute(null));
         Assert.Equal(TimeBase.Default.SecondsPerDivision, _viewModel.ViewSecondsPerDivision);
+    }
+
+    [Fact]
+    public void View_scales_step_1_2_5_through_every_time_base()
+    {
+        var scales = AcquisitionViewModel.ViewScales;
+
+        Assert.Equal(50e-9, scales[0]);
+        Assert.Equal([50e-9, 100e-9, 200e-9, 500e-9, 1e-6], scales.Take(5));
+        Assert.True(scales.Zip(scales.Skip(1)).All(pair => pair.First < pair.Second));
+        Assert.All(TimeBase.All, timeBase => Assert.Contains(scales, s => Math.Abs(s / timeBase.SecondsPerDivision - 1) < 1e-9));
+        Assert.Equal(3600, scales[^1]);
     }
 
     [Fact]
@@ -963,17 +1047,16 @@ public class AcquisitionViewModelTests
     }
 
     [Fact]
-    public async Task A_frame_is_shown_in_its_own_time_base()
+    public async Task A_frame_taken_at_another_rate_shows_at_the_current_scale()
     {
         await RunningAsync();
         await HumFramesAsync(2);
-        var recorded = _viewModel.TimeBase;
 
-        // Until a frame with the new time base arrives, the screen keeps the old scale.
+        // The time base sets the scale at once; the old frame stays until a new one arrives, in its own rate.
         _viewModel.TimeBase = TimeBase.All.Single(t => t.Name == "1 ms");
 
-        Assert.Equal(recorded.SecondsPerDivision, _viewModel.ViewSecondsPerDivision);
-        Assert.Equal(recorded.ToString(), _viewModel.HorizontalText);
+        Assert.Equal(1e-3, _viewModel.ViewSecondsPerDivision, precision: 15);
+        Assert.Equal("1.00 ms/div · 100 MS/s · ×0.0005", _viewModel.HorizontalText);
     }
 
     [Fact]

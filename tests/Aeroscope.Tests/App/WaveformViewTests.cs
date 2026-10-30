@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -31,6 +32,50 @@ public class UnitsTests
     public void Seconds(double value, string expected)
     {
         Assert.Equal(expected, Units.Seconds(value));
+    }
+}
+
+[UseInvariantCulture]
+public class SampleRateTests
+{
+    [Theory]
+    [InlineData(100e6, "100 MS/s")]
+    [InlineData(25e6, "25 MS/s")]
+    [InlineData(2.5e6, "2.5 MS/s")]
+    [InlineData(500e3, "500 kS/s")]
+    [InlineData(2500, "2.5 kS/s")]
+    [InlineData(100, "100 S/s")]
+    [InlineData(10, "10 S/s")]
+    public void Rates_use_k_and_M(double samplesPerSecond, string expected)
+    {
+        Assert.Equal(expected, Units.SampleRate(samplesPerSecond));
+    }
+
+    [Fact]
+    public void Time_bases_show_their_rate_and_1_to_1_scale()
+    {
+        Assert.Equal("100 MS/s (500 ns/div)", Units.TimeBaseText(TimeBase.Default));
+        Assert.Equal("5 kS/s (10 ms/div)", Units.TimeBaseText(TimeBase.All.Single(t => t.Name == "10 ms")));
+        Assert.Equal("100 S/s (500 ms/div, roll)", Units.TimeBaseText(TimeBase.All.Single(t => t.Name == "500 ms")));
+        Assert.Equal("100 S/s (500 ms/div, roll)", new TimeBaseText().Convert(TimeBase.All.Single(t => t.Name == "500 ms"), typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal("100 MS/s", new TimeBaseText { Part = TimeBaseText.Parts.Rate }.Convert(TimeBase.Default, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal("500 ns/div", new TimeBaseText { Part = TimeBaseText.Parts.Scale }.Convert(TimeBase.Default, typeof(string), null, CultureInfo.InvariantCulture));
+    }
+}
+
+public class SampleDotTests
+{
+    [Theory]
+    [InlineData(500e-9, false)] // 50 samples a division: a line
+    [InlineData(200e-9, false)] // 20
+    [InlineData(100e-9, true)]  // 10: dots on the line
+    [InlineData(50e-9, true)]
+    public void Samples_are_dotted_below_20_a_division(double secondsPerDivision, bool dots)
+    {
+        var map = new ScreenMapping(500, 400, 1, secondsPerDivision, 0);
+        var waveform = new Waveform([0, 1, 2], SampleInterval: 10e-9, FirstSampleTime: 0);
+
+        Assert.Equal(dots, WaveformView.ShowsSampleDots(map, waveform));
     }
 }
 

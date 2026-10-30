@@ -17,6 +17,21 @@ public static class Units
 
     public static string Seconds(double seconds) => Format(seconds, "s");
 
+    /// <summary>Samples per second with k or M, the way scopes show it: "100 MS/s", "2.5 kS/s", "10 S/s".</summary>
+    public static string SampleRate(double samplesPerSecond)
+    {
+        var (scale, prefix) = samplesPerSecond >= 1e6 ? (1e-6, "M") : samplesPerSecond >= 1e3 ? (1e-3, "k") : (1, "");
+        return $"{(samplesPerSecond * scale).ToString("0.###", CultureInfo.InvariantCulture)} {prefix}S/s";
+    }
+
+    /// <summary>A time base as a sample rate with its 1:1 scale, e.g. "100 MS/s (500 ns/div)".</summary>
+    public static string TimeBaseText(Core.Protocol.TimeBase timeBase)
+        => $"{SampleRate(1 / timeBase.SampleInterval)} ({TimeBaseScale(timeBase)})";
+
+    /// <summary>The scale a time base shows at 1:1, e.g. "500 ns/div", "1 s/div, roll".</summary>
+    public static string TimeBaseScale(Core.Protocol.TimeBase timeBase)
+        => $"{timeBase.Name}/div{(timeBase.IsRoll ? ", roll" : "")}";
+
     /// <summary>
     /// Reads a typed voltage: a number with an optional prefix and unit, e.g. "1.2", "-0,5 V",
     /// "500 mV", "20mv". A plain number is in volts.

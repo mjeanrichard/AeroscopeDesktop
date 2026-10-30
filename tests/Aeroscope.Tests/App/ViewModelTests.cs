@@ -88,7 +88,8 @@ public class ScopeStatusTests
         }
 
         Assert.Equal("Fully on", _status.Power);
-        Assert.Equal("245 (full), charging", _status.Battery);
+        Assert.Equal("100 %, charging", _status.Battery);
+        Assert.Equal("Raw level 245 (full)", _status.BatteryLevel);
         Assert.Equal("20.6 °C", _status.Temperature);
         Assert.Equal("MCU 5, FPGA 5, HW 1", _status.Firmware);
         Assert.Equal("1000057", _status.SerialNumber);
@@ -110,23 +111,25 @@ public class ScopeStatusTests
     {
         _status.Apply(new TelemetryMessage(connected, charging, 230, 21));
 
-        Assert.Equal($"230 (partial){suffix}", _status.Battery);
+        Assert.Equal($"55 %{suffix}", _status.Battery);
     }
 
     [Theory]
     // Spec: above 238 full, 226-238 partial, 220-226 low.
-    [InlineData(255, "full")]
-    [InlineData(239, "full")]
-    [InlineData(238, "partial")]
-    [InlineData(226, "partial")]
-    [InlineData(225, "low")]
-    [InlineData(220, "low")]
-    [InlineData(219, "empty")]
-    public void Battery_thresholds(byte level, string state)
+    [InlineData(255, "full", 100)]
+    [InlineData(239, "full", 100)]
+    [InlineData(238, "partial", 95)]
+    [InlineData(226, "partial", 35)]
+    [InlineData(225, "low", 30)]
+    [InlineData(220, "low", 5)]
+    [InlineData(219, "empty", 0)]
+    [InlineData(0, "empty", 0)]
+    public void Battery_thresholds(byte level, string state, int percent)
     {
         _status.Apply(new TelemetryMessage(false, false, level, 21));
 
-        Assert.Equal($"{level} ({state})", _status.Battery);
+        Assert.Equal($"{percent} %", _status.Battery);
+        Assert.Equal($"Raw level {level} ({state})", _status.BatteryLevel);
     }
 
     [Fact]

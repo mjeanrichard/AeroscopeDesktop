@@ -34,6 +34,46 @@ public class UnitsTests
     }
 }
 
+public class VoltsEntryTests
+{
+    [Theory]
+    [InlineData("1.2", 1.2)]
+    [InlineData(" -0,5 V ", -0.5)]
+    [InlineData("500 mV", 0.5)]
+    [InlineData("20mv", 0.02)]
+    [InlineData("-120 mV", -0.12)]
+    [InlineData("250 µV", 250e-6)]
+    [InlineData("3v", 3)]
+    [InlineData("1e-3", 0.001)]
+    public void Typed_voltages_are_read(string text, double expected)
+    {
+        Assert.True(Units.TryParseVolts(text, out var volts));
+        Assert.Equal(expected, volts, precision: 12);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("V")]
+    [InlineData("abc")]
+    [InlineData("1.2 kV")]
+    [InlineData("2 MV")]
+    [InlineData("NaN")]
+    public void Anything_else_is_rejected(string text)
+    {
+        Assert.False(Units.TryParseVolts(text, out _));
+    }
+
+    [Theory]
+    [InlineData(1.2)]
+    [InlineData(-0.5)]
+    [InlineData(0.0123)]
+    public void Shown_values_read_back(double volts)
+    {
+        Assert.True(Units.TryParseVolts(Units.Volts(volts), out var read));
+        Assert.Equal(volts, read, precision: 9);
+    }
+}
+
 public class ScreenMappingTests
 {
     private static readonly ScreenMapping Map = new(Width: 500, Height: 400, VoltsPerDivision: 1, SecondsPerDivision: 1e-3, CentreVolts: 0);
@@ -253,6 +293,95 @@ public class WaveformViewTests
         Assert.False(AnyInColumn(pixels, Width - 2, 246, 254, c => c.B > 200 && c.R < 120));
         Assert.False(AnyInColumn(pixels, Width / 2, 0, 4, IsTrigger));
         Assert.True(AnyInColumn(pixels, 2, 196, 204, IsGround)); // the ground marker stays
+    }
+
+    /// <summary>Lays the view out at 500 x 400 (50 px a division) and runs <paramref name="test"/> on its thread.</summary>
+    private static void WithView(Action<WaveformView> test)
+    {
+        Render(view =>
+        {
+            view.Measure(new Size(Width, Height));
+            view.Arrange(new Rect(0, 0, Width, Height));
+            test(view);
+        });
+    }
+
+    [Fact]
+    public void Ground_marker_and_trigger_line_can_be_grabbed()
+    {
+        WithView(view =>
+        {
+            view.TriggerLevelVolts = 2; // y = 100; ground at y = 200
+
+            Assert.Equal(DragHandle.Offset, view.HandleAt(new Point(4, 205)));
+            Assert.Equal(DragHandle.TriggerLevel, view.HandleAt(new Point(Width - 3, 100)));
+            Assert.Equal(DragHandle.TriggerLevel, view.HandleAt(new Point(250, 106))); // anywhere along the line
+            Assert.Equal(DragHandle.None, view.HandleAt(new Point(250, 150)));
+            Assert.Equal(DragHandle.None, view.HandleAt(new Point(250, 200))); // the ground marker only at the edge
+
+            view.ShowTrigger = false; // roll mode
+            Assert.Equal(DragHandle.None, view.HandleAt(new Point(250, 100)));
+            Assert.Equal(DragHandle.Offset, view.HandleAt(new Point(4, 200)));
+        });
+    }
+
+    [Fact]
+    public void Dragging_the_trigger_line_sets_the_level_where_it_is_dropped()
+    {
+        WithView(view =>
+        {
+            view.CentreVolts = 1;
+
+            view.DragTo(DragHandle.TriggerLevel, 150); // a division above the centre
+            Assert.Equal(2, view.TriggerLevelVolts, precision: 9);
+
+            view.DragTo(DragHandle.TriggerLevel, 150.4); // 1.992 V: snaps to 1/50 division
+            Assert.Equal(2, view.TriggerLevelVolts, precision: 9);
+
+            view.DragTo(DragHandle.TriggerLevel, -80); // kept on the screen
+            Assert.Equal(5, view.TriggerLevelVolts, precision: 9);
+        });
+    }
+
+    [Fact]
+    public void Dragging_the_ground_marker_moves_the_offset()
+    {
+        WithView(view =>
+        {
+            view.VoltsPerDivision = 0.1;
+
+            view.DragTo(DragHandle.Offset, 250); // 0 V a division below the centre: the centre is +0.1 V
+            Assert.Equal(0.1, view.CentreVolts, precision: 9);
+            Assert.Equal(250, new ScreenMapping(Width, Height, 0.1, 1e-6, view.CentreVolts).Y(0), precision: 9);
+
+            view.DragTo(DragHandle.Offset, 0);
+            Assert.Equal(-0.4, view.CentreVolts, precision: 9);
+        });
+    }
+
+    private sealed class Levels
+    {
+        public double Offset { get; set; }
+
+        public double Trigger { get; set; }
+    }
+
+    [Fact]
+    public void Dragged_values_reach_the_bound_settings()
+    {
+        var levels = new Levels();
+        WithView(view =>
+        {
+            view.DataContext = levels;
+            view.SetBinding(WaveformView.CentreVoltsProperty, nameof(Levels.Offset));
+            view.SetBinding(WaveformView.TriggerLevelVoltsProperty, nameof(Levels.Trigger));
+
+            view.DragTo(DragHandle.TriggerLevel, 100);
+            view.DragTo(DragHandle.Offset, 250);
+        });
+
+        Assert.Equal(1, levels.Offset, precision: 9);
+        Assert.Equal(2, levels.Trigger, precision: 9);
     }
 
     [Fact]

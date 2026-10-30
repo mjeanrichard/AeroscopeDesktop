@@ -56,7 +56,7 @@
                 <TextBlock Text="{Binding Power}" />
             </StatusBarItem>
             <Separator />
-            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Battery level (raw) and state">
+            <StatusBarItem DataContext="{Binding Scope}" ToolTip="{Binding BatteryLevel}">
                 <TextBlock Text="{Binding Battery, StringFormat=Battery {0}}" />
             </StatusBarItem>
             <Separator />
@@ -103,7 +103,7 @@
                                                SecondsPerDivision="{Binding ViewSecondsPerDivision}"
                                                CentreSeconds="{Binding ViewCentreSeconds}"
                                                MouseWheel="OnScreenMouseWheel"
-                                               ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with."
+                                               ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with. Drag the green ground marker to move the offset, the orange trigger line to set the level."
                                                CentreVolts="{Binding OffsetVolts}"
                                                TriggerLevelVolts="{Binding TriggerLevelVolts}"
                                                FrameTriggerLevelVolts="{Binding FrameTriggerLevelVolts}"
@@ -157,13 +157,19 @@
                             <TextBlock Text="Vertical" Style="{StaticResource SectionHeader}" />
                             <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" />
                             <CheckBox Content="DC coupling" IsChecked="{Binding DcCoupled}" Margin="0,6,0,0" />
-                            <DockPanel Margin="0,6,0,0">
-                                <TextBlock Text="Offset" Style="{StaticResource Label}" />
-                                <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroOffsetCommand}" Padding="8,0" Margin="6,0,0,0" />
-                                <TextBlock Text="{Binding OffsetText}" />
+                            <DockPanel Margin="0,6,0,0" ToolTip="Voltage at the screen centre. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the green ground marker on the screen.">
+                                <TextBlock Text="Offset" Style="{StaticResource Label}" Width="40" />
+                                <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroOffsetCommand}" Padding="8,0" Margin="4,0,0,0" />
+                                <RepeatButton DockPanel.Dock="Right" Content="+" Command="{Binding OffsetUpCommand}" Padding="8,0" Margin="4,0,0,0" />
+                                <RepeatButton DockPanel.Dock="Right" Content="−" Command="{Binding OffsetDownCommand}" Padding="8,0" Margin="4,0,0,0" />
+                                <TextBox Text="{Binding OffsetText}" KeyDown="OnEntryKeyDown" GotKeyboardFocus="OnEntryFocused"
+                                         VerticalContentAlignment="Center" HorizontalContentAlignment="Right">
+                                    <TextBox.InputBindings>
+                                        <KeyBinding Key="Up" Command="{Binding OffsetUpCommand}" />
+                                        <KeyBinding Key="Down" Command="{Binding OffsetDownCommand}" />
+                                    </TextBox.InputBindings>
+                                </TextBox>
                             </DockPanel>
-                            <Slider Minimum="-10" Maximum="10" SmallChange="0.1" LargeChange="1"
-                                    Value="{Binding OffsetDivisions}" ToolTip="Voltage at the screen centre, in divisions" />
 
                             <TextBlock Text="Horizontal" Style="{StaticResource SectionHeader}" />
                             <ComboBox ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" />
@@ -179,13 +185,19 @@
                                           ToolTip="Keep acquiring when no edge is found" />
                                 <CheckBox Content="Noise reject" IsChecked="{Binding NoiseReject}" Margin="0,4,0,0"
                                           ToolTip="Only applies to a single edge" />
-                                <DockPanel Margin="0,6,0,0">
-                                    <TextBlock Text="Level" Style="{StaticResource Label}" />
-                                    <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroTriggerLevelCommand}" Padding="8,0" Margin="6,0,0,0" />
-                                    <TextBlock Text="{Binding TriggerLevelText}" />
+                                <DockPanel Margin="0,6,0,0" ToolTip="Trigger level in volts. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the orange trigger line on the screen.">
+                                    <TextBlock Text="Level" Style="{StaticResource Label}" Width="40" />
+                                    <Button DockPanel.Dock="Right" Content="0" Command="{Binding ZeroTriggerLevelCommand}" Padding="8,0" Margin="4,0,0,0" />
+                                    <RepeatButton DockPanel.Dock="Right" Content="+" Command="{Binding TriggerLevelUpCommand}" Padding="8,0" Margin="4,0,0,0" />
+                                    <RepeatButton DockPanel.Dock="Right" Content="−" Command="{Binding TriggerLevelDownCommand}" Padding="8,0" Margin="4,0,0,0" />
+                                    <TextBox Text="{Binding TriggerLevelText}" KeyDown="OnEntryKeyDown" GotKeyboardFocus="OnEntryFocused"
+                                             VerticalContentAlignment="Center" HorizontalContentAlignment="Right">
+                                        <TextBox.InputBindings>
+                                            <KeyBinding Key="Up" Command="{Binding TriggerLevelUpCommand}" />
+                                            <KeyBinding Key="Down" Command="{Binding TriggerLevelDownCommand}" />
+                                        </TextBox.InputBindings>
+                                    </TextBox>
                                 </DockPanel>
-                                <Slider Minimum="-4" Maximum="4" SmallChange="0.05" LargeChange="0.5"
-                                        Value="{Binding TriggerLevelDivisions}" ToolTip="Trigger level, in divisions from the screen centre" />
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>

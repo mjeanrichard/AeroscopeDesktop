@@ -236,27 +236,88 @@ public class AcquisitionViewModelTests
     }
 
     [Fact]
-    public void Offset_divisions_follow_the_range()
+    public void Offset_is_typed_in_volts_and_kept_when_the_range_changes()
     {
-        _viewModel.OffsetDivisions = 2;
+        _viewModel.OffsetText = "2";
         Assert.Equal(2, _viewModel.OffsetVolts);
         Assert.Equal("2.00 V", _viewModel.OffsetText);
 
-        _viewModel.Range = VoltageRange.Range2V; // keeps volts
+        _viewModel.Range = VoltageRange.Range2V;
 
-        Assert.Equal(1, _viewModel.OffsetDivisions);
+        Assert.Equal(2, _viewModel.OffsetVolts);
     }
 
     [Fact]
-    public void Trigger_divisions_are_relative_to_the_screen_centre()
+    public void Typed_offset_is_limited_to_ten_divisions()
+    {
+        _viewModel.OffsetText = "-25 V"; // 1 V/div
+
+        Assert.Equal(-10, _viewModel.OffsetVolts);
+    }
+
+    [Fact]
+    public void Unreadable_entries_change_nothing()
     {
         _viewModel.OffsetVolts = 1;
+        _viewModel.TriggerLevelVolts = 0.5;
+        var changed = new List<string?>();
+        _viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
-        _viewModel.TriggerLevelDivisions = 0.5;
+        _viewModel.OffsetText = "abc";
+        _viewModel.TriggerLevelText = "";
 
-        Assert.Equal(1.5, _viewModel.TriggerLevelVolts);
-        Assert.Equal(0.5, _viewModel.TriggerLevelDivisions);
-        Assert.Equal("1.50 V", _viewModel.TriggerLevelText);
+        Assert.Equal((1, 0.5), (_viewModel.OffsetVolts, _viewModel.TriggerLevelVolts));
+        Assert.Equal([nameof(AcquisitionViewModel.OffsetText), nameof(AcquisitionViewModel.TriggerLevelText)], changed); // the boxes show the value again
+        Assert.Empty(_writes);
+    }
+
+    [Fact]
+    public void Trigger_level_stays_in_volts_when_the_offset_moves()
+    {
+        _viewModel.TriggerLevelText = "500 mV";
+
+        _viewModel.OffsetText = "2";
+
+        Assert.Equal(0.5, _viewModel.TriggerLevelVolts);
+        Assert.Equal("500 mV", _viewModel.TriggerLevelText);
+    }
+
+    [Fact]
+    public void Typed_trigger_level_is_limited_to_the_screen()
+    {
+        _viewModel.OffsetVolts = 1; // the screen spans -3 V to 5 V
+
+        _viewModel.TriggerLevelText = "7";
+        Assert.Equal(5, _viewModel.TriggerLevelVolts);
+
+        _viewModel.TriggerLevelText = "-7";
+        Assert.Equal(-3, _viewModel.TriggerLevelVolts);
+    }
+
+    [Fact]
+    public void Steps_are_a_tenth_of_a_division_on_a_grid()
+    {
+        _viewModel.Range = VoltageRange.All.Single(r => r.VoltsPerDivision == 0.1);
+        _viewModel.OffsetVolts = 0.123;
+
+        _viewModel.OffsetUpCommand.Execute(null);
+        Assert.Equal(0.13, _viewModel.OffsetVolts, precision: 9); // 0.12 rounded to the 10 mV grid, plus a step
+
+        _viewModel.TriggerLevelDownCommand.Execute(null);
+        _viewModel.TriggerLevelDownCommand.Execute(null);
+        Assert.Equal(-0.02, _viewModel.TriggerLevelVolts, precision: 9);
+    }
+
+    [Fact]
+    public void Steps_stop_at_the_limits()
+    {
+        _viewModel.OffsetVolts = 10;
+        _viewModel.OffsetUpCommand.Execute(null);
+        Assert.Equal(10, _viewModel.OffsetVolts, precision: 9);
+
+        _viewModel.TriggerLevelVolts = 14; // the screen reaches 14 V
+        _viewModel.TriggerLevelUpCommand.Execute(null);
+        Assert.Equal(14, _viewModel.TriggerLevelVolts, precision: 9);
     }
 
     [Fact]

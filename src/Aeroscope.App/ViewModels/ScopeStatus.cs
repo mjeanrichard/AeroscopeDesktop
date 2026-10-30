@@ -15,6 +15,9 @@ public partial class ScopeStatus : ObservableObject
     public partial string Battery { get; set; } = Unknown;
 
     [ObservableProperty]
+    public partial string BatteryLevel { get; set; } = Unknown;
+
+    [ObservableProperty]
     public partial string Temperature { get; set; } = Unknown;
 
     [ObservableProperty]
@@ -38,7 +41,8 @@ public partial class ScopeStatus : ObservableObject
                 break;
             case TelemetryMessage telemetry:
                 var charger = telemetry.Charging ? ", charging" : telemetry.ChargerConnected ? ", charger connected" : "";
-                Battery = $"{telemetry.BatteryLevel} ({BatteryState(telemetry.BatteryLevel)}){charger}";
+                Battery = $"{BatteryPercent(telemetry.BatteryLevel)} %{charger}";
+                BatteryLevel = $"Raw level {telemetry.BatteryLevel} ({BatteryState(telemetry.BatteryLevel)})";
                 Temperature = $"{telemetry.TemperatureCelsius:0.0} °C";
                 break;
             case VersionMessage version:
@@ -56,9 +60,17 @@ public partial class ScopeStatus : ObservableObject
 
     public void Reset()
     {
-        Power = Battery = Temperature = Firmware = SerialNumber = LastFrame = Unknown;
+        Power = Battery = BatteryLevel = Temperature = Firmware = SerialNumber = LastFrame = Unknown;
         FramesReceived = 0;
     }
+
+    // The spec gives no scale, only bands (220 low ... above 238 full), so the percentage
+    // runs linearly across them: 219 and below is 0 %, 239 and above 100 %, 5 % per step.
+    public static int BatteryPercent(byte level)
+        => Math.Clamp((level - EmptyLevel) * 100 / (FullLevel - EmptyLevel), 0, 100);
+
+    private const int EmptyLevel = 219;
+    private const int FullLevel = 239;
 
     // Thresholds from the spec's telemetry section.
     private static string BatteryState(byte level) => level switch

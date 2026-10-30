@@ -134,28 +134,62 @@ public partial class AcquisitionViewModel : ObservableObject
         set => Update(Settings with { TriggerLevelVolts = value });
     }
 
-    /// <summary>Offset in divisions of the current range, for a slider.</summary>
-    public double OffsetDivisions
-    {
-        get => OffsetVolts / Range.VoltsPerDivision;
-        set => OffsetVolts = value * Range.VoltsPerDivision;
-    }
+    /// <summary>How far the offset reaches from 0 V either way, in divisions (as far as the old slider went).</summary>
+    public const double OffsetLimitDivisions = 10;
 
-    /// <summary>Trigger level in divisions from the screen centre, for a slider.</summary>
-    public double TriggerLevelDivisions
-    {
-        get => (TriggerLevelVolts - OffsetVolts) / Range.VoltsPerDivision;
-        set => TriggerLevelVolts = OffsetVolts + value * Range.VoltsPerDivision;
-    }
+    /// <summary>The − and + buttons (and Up/Down) move the offset and trigger level by this fraction of a division.</summary>
+    public const double EntryStep = 0.1;
 
     /// <summary>Roll mode: the scope streams continuously and ignores the trigger.</summary>
     public bool IsRoll => TimeBase.IsRoll;
 
     public bool HasTrigger => !IsRoll;
 
-    public string OffsetText => Units.Volts(OffsetVolts);
+    /// <summary>The offset as shown and typed, e.g. "1.20 V" or "-500 mV"; limited to ±10 divisions. Unreadable text is ignored.</summary>
+    public string OffsetText
+    {
+        get => Units.Volts(OffsetVolts);
+        set
+        {
+            if (Units.TryParseVolts(value, out var volts))
+            {
+                OffsetVolts = ClampOffset(volts);
+            }
 
-    public string TriggerLevelText => Units.Volts(TriggerLevelVolts);
+            OnPropertyChanged(); // show the value as applied
+        }
+    }
+
+    /// <summary>The trigger level as shown and typed; limited to the screen, the codes the scope compares. Unreadable text is ignored.</summary>
+    public string TriggerLevelText
+    {
+        get => Units.Volts(TriggerLevelVolts);
+        set
+        {
+            if (Units.TryParseVolts(value, out var volts))
+            {
+                TriggerLevelVolts = ClampToScreen(volts);
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    private double ClampOffset(double volts)
+        => Math.Clamp(volts, -OffsetLimitDivisions * Range.VoltsPerDivision, OffsetLimitDivisions * Range.VoltsPerDivision);
+
+    private double ClampToScreen(double volts)
+    {
+        var half = VoltageRange.Divisions / 2.0 * Range.VoltsPerDivision;
+        return Math.Clamp(volts, OffsetVolts - half, OffsetVolts + half);
+    }
+
+    /// <summary>Moves to the next step of <see cref="EntryStep"/> divisions up or down.</summary>
+    private double Stepped(double volts, int steps)
+    {
+        var step = EntryStep * Range.VoltsPerDivision;
+        return (Math.Round(volts / step) + steps) * step;
+    }
 
     public string MaximumText => Screen is null ? NoValue : Units.Volts(Screen.Maximum);
 
@@ -170,6 +204,18 @@ public partial class AcquisitionViewModel : ObservableObject
 
     [RelayCommand]
     private void ZeroTriggerLevel() => TriggerLevelVolts = 0;
+
+    [RelayCommand]
+    private void OffsetUp() => OffsetVolts = ClampOffset(Stepped(OffsetVolts, 1));
+
+    [RelayCommand]
+    private void OffsetDown() => OffsetVolts = ClampOffset(Stepped(OffsetVolts, -1));
+
+    [RelayCommand]
+    private void TriggerLevelUp() => TriggerLevelVolts = ClampToScreen(Stepped(TriggerLevelVolts, 1));
+
+    [RelayCommand]
+    private void TriggerLevelDown() => TriggerLevelVolts = ClampToScreen(Stepped(TriggerLevelVolts, -1));
 
     [RelayCommand(CanExecute = nameof(IsReady))]
     private async Task RunAsync()

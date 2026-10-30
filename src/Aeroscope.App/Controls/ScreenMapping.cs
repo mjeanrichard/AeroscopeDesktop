@@ -15,4 +15,7 @@ public readonly record struct ScreenMapping(double Width, double Height, double 
     public double X(double seconds) => Width / 2 + (seconds - CentreSeconds) / SecondsPerDivision * DivisionWidth;
 
     public double Y(double volts) => Height / 2 - (volts - CentreVolts) / VoltsPerDivision * DivisionHeight;
+
+    /// <summary>The voltage at a height on the screen: the inverse of <see cref="Y"/>.</summary>
+    public double VoltsAt(double y) => CentreVolts + (Height / 2 - y) / DivisionHeight * VoltsPerDivision;
 }

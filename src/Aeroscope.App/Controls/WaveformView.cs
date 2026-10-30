@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using Aeroscope.Core.Protocol;
 
@@ -8,19 +9,28 @@ namespace Aeroscope.App.Controls;
 /// Scope screen: 10 x 8 division grid, the trace, a ground marker (0 V) on the left,
 /// the trigger level on the right and the trigger time at the top (unless <see cref="ShowTrigger"/> is off).
 /// A second, blue level marker shows the trigger level the shown frame was taken with.
+/// The ground marker (the offset) and the trigger level can be dragged with the mouse.
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
     public static readonly DependencyProperty TracesProperty = Register<IReadOnlyList<Waveform>?>(nameof(Traces), null);
     public static readonly DependencyProperty VoltsPerDivisionProperty = Register(nameof(VoltsPerDivision), 1.0);
     public static readonly DependencyProperty SecondsPerDivisionProperty = Register(nameof(SecondsPerDivision), 1e-6);
-    public static readonly DependencyProperty CentreVoltsProperty = Register(nameof(CentreVolts), 0.0);
-    public static readonly DependencyProperty TriggerLevelVoltsProperty = Register(nameof(TriggerLevelVolts), 0.0);
+    public static readonly DependencyProperty CentreVoltsProperty = Register(nameof(CentreVolts), 0.0, twoWay: true);
+    public static readonly DependencyProperty TriggerLevelVoltsProperty = Register(nameof(TriggerLevelVolts), 0.0, twoWay: true);
     public static readonly DependencyProperty ShowTriggerProperty = Register(nameof(ShowTrigger), true);
     public static readonly DependencyProperty FrameTriggerLevelVoltsProperty = Register<double?>(nameof(FrameTriggerLevelVolts), null);
     public static readonly DependencyProperty CentreSecondsProperty = Register(nameof(CentreSeconds), 0.0);
 
     private const double MarkerSize = 7;
+
+    /// <summary>How close to a marker (or the trigger line) the mouse grabs it, in pixels.</summary>
+    private const double GrabDistance = 8;
+
+    /// <summary>Dragged values snap to this fraction of a division.</summary>
+    private const double DragStep = 1.0 / 50;
+
+    private DragHandle _dragging;
 
     private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(0x11, 0x14, 0x18)));
     private static readonly Pen GridPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x2B, 0x31, 0x38))), 1));
@@ -83,6 +93,76 @@ public sealed class WaveformView : FrameworkElement
     {
         get => (double?)GetValue(FrameTriggerLevelVoltsProperty);
         set => SetValue(FrameTriggerLevelVoltsProperty, value);
+    }
+
+    private ScreenMapping Map => new(RenderSize.Width, RenderSize.Height, VoltsPerDivision, SecondsPerDivision, CentreVolts, CentreSeconds);
+
+    /// <summary>What the mouse would drag at this point: the ground marker, or the trigger level (its marker or anywhere along its line).</summary>
+    public DragHandle HandleAt(Point point)
+    {
+        var map = Map;
+        if (point.X <= MarkerSize + GrabDistance && Math.Abs(point.Y - Math.Clamp(map.Y(0), 0, map.Height)) <= GrabDistance)
+        {
+            return DragHandle.Offset;
+        }
+
+        return ShowTrigger && Math.Abs(point.Y - Math.Clamp(map.Y(TriggerLevelVolts), 0, map.Height)) <= GrabDistance
+            ? DragHandle.TriggerLevel
+            : DragHandle.None;
+    }
+
+    /// <summary>Moves a handle to a height on the screen (kept on the screen): sets the offset or the trigger level.</summary>
+    public void DragTo(DragHandle handle, double y)
+    {
+        var map = Map;
+        y = Math.Clamp(y, 0, map.Height);
+        switch (handle)
+        {
+            case DragHandle.Offset:
+                // 0 V goes to y: the centre is as far above 0 V as y is below the centre.
+                CentreVolts = Snapped((y - map.Height / 2) / map.DivisionHeight * VoltsPerDivision);
+                break;
+            case DragHandle.TriggerLevel:
+                TriggerLevelVolts = Snapped(map.VoltsAt(y));
+                break;
+        }
+    }
+
+    private double Snapped(double volts) => Math.Round(volts / (VoltsPerDivision * DragStep)) * VoltsPerDivision * DragStep;
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        _dragging = HandleAt(e.GetPosition(this));
+        if (_dragging != DragHandle.None && CaptureMouse())
+        {
+            e.Handled = true;
+        }
+
+        base.OnMouseLeftButtonDown(e);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        var position = e.GetPosition(this);
+        if (_dragging != DragHandle.None)
+        {
+            DragTo(_dragging, position.Y);
+        }
+
+        Cursor = (_dragging != DragHandle.None ? _dragging : HandleAt(position)) != DragHandle.None ? Cursors.SizeNS : null;
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        ReleaseMouseCapture();
+        base.OnMouseLeftButtonUp(e);
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        _dragging = DragHandle.None;
+        base.OnLostMouseCapture(e);
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -218,7 +298,10 @@ public sealed class WaveformView : FrameworkElement
         return freezable;
     }
 
-    private static DependencyProperty Register<T>(string name, T defaultValue)
+    private static DependencyProperty Register<T>(string name, T defaultValue, bool twoWay = false)
         => DependencyProperty.Register(name, typeof(T), typeof(WaveformView),
-            new FrameworkPropertyMetadata(defaultValue, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(defaultValue, FrameworkPropertyMetadataOptions.AffectsRender
+                | (twoWay ? FrameworkPropertyMetadataOptions.BindsTwoWayByDefault : 0)));
 }
+
+public enum DragHandle { None, Offset, TriggerLevel }

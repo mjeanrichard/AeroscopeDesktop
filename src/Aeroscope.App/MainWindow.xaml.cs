@@ -1,6 +1,7 @@
 ﻿using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Aeroscope.App.ViewModels;
@@ -86,6 +87,27 @@ public partial class MainWindow : Window
 
         e.Handled = true;
     }
+
+    /// <summary>Number entries: Enter applies the typed value, Escape goes back to the current one.</summary>
+    private void OnEntryKeyDown(object sender, KeyEventArgs e)
+    {
+        var box = (TextBox)sender;
+        if (e.Key == Key.Enter)
+        {
+            box.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            box.SelectAll();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+            box.SelectAll();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Selects the whole value on entering a number box, so typing replaces it.</summary>
+    private void OnEntryFocused(object sender, KeyboardFocusChangedEventArgs e) => ((TextBox)sender).SelectAll();
 
     protected override void OnClosing(CancelEventArgs e)
     {

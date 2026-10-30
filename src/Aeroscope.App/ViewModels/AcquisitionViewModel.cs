@@ -48,11 +48,15 @@ public partial class AcquisitionViewModel : ObservableObject
 
     /// <summary>True once the scope reports its FPGA is powered and configured.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RunCommand), nameof(StopCommand), nameof(SingleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunCommand), nameof(StopCommand), nameof(RunStopCommand), nameof(SingleCommand))]
     public partial bool IsReady { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RunStopText))]
     public partial RunMode RunMode { get; private set; }
+
+    /// <summary>What <see cref="RunStopCommand"/> does next.</summary>
+    public string RunStopText => RunMode == RunMode.Stopped ? "Run" : "Stop";
 
     /// <summary>Running with a frame cycle long enough to be worth following.</summary>
     [ObservableProperty]
@@ -182,6 +186,10 @@ public partial class AcquisitionViewModel : ObservableObject
         await StopAcquisitionAsync();
     }
 
+    /// <summary>One button for both: runs when stopped, stops a run or a single shot. The device button does the same.</summary>
+    [RelayCommand(CanExecute = nameof(IsReady))]
+    private Task RunStopAsync() => RunMode == RunMode.Stopped ? RunAsync() : StopAsync();
+
     /// <summary>
     /// The scope's own single-frame command ("F") rarely answers, so single shot is
     /// run mode that stops after the first frame. Turn auto trigger off to wait for a real edge.
@@ -258,18 +266,9 @@ public partial class AcquisitionViewModel : ObservableObject
     /// <summary>The device button toggles between running and stopped, as the spec asks. Each "BD" is one press (holding doesn't repeat).</summary>
     public async Task OnButtonPressedAsync()
     {
-        if (!IsReady)
+        if (IsReady)
         {
-            return;
-        }
-
-        if (RunMode == RunMode.Stopped)
-        {
-            await RunAsync();
-        }
-        else
-        {
-            await StopAsync();
+            await RunStopAsync();
         }
     }
 

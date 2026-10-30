@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Aeroscope.App.ViewModels"
         xmlns:controls="clr-namespace:Aeroscope.App.Controls"
+        xmlns:local="clr-namespace:Aeroscope.App"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance vm:MainViewModel}"
         Title="Aeroscope" Height="760" Width="1280">
@@ -25,76 +26,50 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="10">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
-            <ColumnDefinition Width="10" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+    <Window.CommandBindings>
+        <CommandBinding Command="local:MainWindow.ShowConnection" Executed="OnShowConnection" />
+    </Window.CommandBindings>
 
-        <!-- Sidebar: devices, connection, scope status -->
-        <DockPanel Grid.Column="0">
-            <TextBlock DockPanel.Dock="Top" Text="Devices" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
-                <Button Content="{Binding ScanButtonText}" Command="{Binding ToggleScanCommand}" />
-                <CheckBox Content="Show all" IsChecked="{Binding ShowAllDevices}" VerticalAlignment="Center"
-                          ToolTip="Show all BLE devices, not only Aeroscopes" />
-            </StackPanel>
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_Scope">
+                <MenuItem Command="local:MainWindow.ShowConnection" />
+                <MenuItem Header="_Disconnect" Command="{Binding DisconnectCommand}" />
+                <Separator />
+                <MenuItem Header="_Auto-connect" IsCheckable="True" IsChecked="{Binding AutoConnect}"
+                          ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
+            </MenuItem>
+        </Menu>
 
-            <Grid DockPanel.Dock="Bottom" DataContext="{Binding Scope}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
-                    <RowDefinition /><RowDefinition /><RowDefinition />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Scope" Style="{StaticResource SectionHeader}" />
-                <TextBlock Grid.Row="1" Text="Power" Style="{StaticResource Label}" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Power}" />
-                <TextBlock Grid.Row="2" Text="Battery" Style="{StaticResource Label}" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Battery}" />
-                <TextBlock Grid.Row="3" Text="Temperature" Style="{StaticResource Label}" />
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Temperature}" />
-                <TextBlock Grid.Row="4" Text="Firmware" Style="{StaticResource Label}" />
-                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Firmware}" />
-                <TextBlock Grid.Row="5" Text="Serial" Style="{StaticResource Label}" />
-                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SerialNumber}" />
-                <TextBlock Grid.Row="6" Text="Frames" Style="{StaticResource Label}" />
-                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding FramesReceived}" />
-            </Grid>
+        <!-- Connection and what the scope reports about itself -->
+        <StatusBar DockPanel.Dock="Bottom" Margin="0,6,0,0">
+            <StatusBar.Resources>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Margin" Value="4,0" />
+                </Style>
+            </StatusBar.Resources>
+            <StatusBarItem MouseDoubleClick="OnStatusDoubleClick" ToolTip="Double-click to connect or disconnect (Ctrl+K)">
+                <TextBlock Text="{Binding Status}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Power state">
+                <TextBlock Text="{Binding Power}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Battery level (raw) and state">
+                <TextBlock Text="{Binding Battery, StringFormat=Battery {0}}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Temperature">
+                <TextBlock Text="{Binding Temperature}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Frames received since connecting">
+                <TextBlock Text="{Binding FramesReceived, StringFormat=Frames {0}}" />
+            </StatusBarItem>
+        </StatusBar>
 
-            <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="Connect" Command="{Binding ConnectCommand}" />
-                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}" />
-                </StackPanel>
-                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,6,0,0" />
-            </StackPanel>
-
-            <ListBox ItemsSource="{Binding DevicesView}" SelectedItem="{Binding SelectedDevice}"
-                     HorizontalContentAlignment="Stretch">
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="vm:DeviceItem">
-                        <Grid Margin="2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding AddressText}" Foreground="Gray" FontFamily="Consolas" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="Gray"
-                                       Text="{Binding Rssi, StringFormat={}{0} dBm}" />
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </DockPanel>
-
-        <TabControl Grid.Column="2">
+        <TabControl Margin="10,0">
             <!-- Scope screen and acquisition controls -->
             <TabItem Header="Scope" DataContext="{Binding Acquisition}">
                 <Grid Margin="6">
@@ -172,10 +147,10 @@
                         <StackPanel>
                             <TextBlock Text="Acquisition" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
                             <StackPanel Orientation="Horizontal">
-                                <Button Content="Run" Command="{Binding RunCommand}" />
+                                <Button Content="{Binding RunStopText}" Command="{Binding RunStopCommand}" MinWidth="70"
+                                        ToolTip="Run continuously, or stop (also a single shot). The scope's button does the same." />
                                 <Button Content="Single" Command="{Binding SingleCommand}"
                                         ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full." />
-                                <Button Content="Stop" Command="{Binding StopCommand}" />
                             </StackPanel>
                             <TextBlock Text="{Binding RunMode}" Foreground="Gray" Margin="0,4,0,0" />
 
@@ -227,6 +202,12 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
+                        <StackPanel Orientation="Horizontal" DataContext="{Binding Scope}" Margin="0,0,0,4">
+                            <TextBlock Text="Firmware" Style="{StaticResource Label}" />
+                            <TextBlock Text="{Binding Firmware}" Margin="0,0,24,0" />
+                            <TextBlock Text="Serial" Style="{StaticResource Label}" />
+                            <TextBlock Text="{Binding SerialNumber}" />
+                        </StackPanel>
                         <TextBlock Text="Characteristics" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
                         <ListView ItemsSource="{Binding Characteristics}" MinHeight="60">
                             <ListView.View>
@@ -291,5 +272,5 @@
                 </Grid>
             </TabItem>
         </TabControl>
-    </Grid>
+    </DockPanel>
 </Window>

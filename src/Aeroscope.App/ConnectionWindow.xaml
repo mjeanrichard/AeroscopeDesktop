@@ -1,0 +1,56 @@
+<Window x:Class="Aeroscope.App.ConnectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Aeroscope.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:MainViewModel}"
+        Title="Connection" Width="420" Height="420" MinWidth="320" MinHeight="300"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="10">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <Button Content="{Binding ScanButtonText}" Command="{Binding ToggleScanCommand}" Margin="0" MinWidth="80" />
+            <CheckBox Content="Show all devices" IsChecked="{Binding ShowAllDevices}" VerticalAlignment="Center" Margin="12,0,0,0"
+                      ToolTip="List all BLE devices, not only Aeroscopes" />
+        </DockPanel>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <Button DockPanel.Dock="Right" Content="Close" IsCancel="True" />
+            <Button DockPanel.Dock="Right" Content="Disconnect" Command="{Binding DisconnectCommand}" />
+            <Button DockPanel.Dock="Right" Content="Connect" Command="{Binding ConnectCommand}" IsDefault="True" />
+            <CheckBox Content="Auto-connect" IsChecked="{Binding AutoConnect}" VerticalAlignment="Center"
+                      ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
+        </DockPanel>
+
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" TextWrapping="Wrap" Margin="0,6,0,0" />
+
+        <ListBox ItemsSource="{Binding DevicesView}" SelectedItem="{Binding SelectedDevice}" HorizontalContentAlignment="Stretch"
+                 IsEnabled="{Binding IsDisconnected}" MouseDoubleClick="OnDeviceDoubleClick"
+                 ToolTip="Double-click a scope to connect">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:DeviceItem">
+                    <Grid Margin="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding AddressText}" Foreground="Gray" FontFamily="Consolas" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="Gray"
+                                   Text="{Binding Rssi, StringFormat={}{0} dBm}" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>

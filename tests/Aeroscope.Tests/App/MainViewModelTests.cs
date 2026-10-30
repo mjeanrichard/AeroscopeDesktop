@@ -1,3 +1,4 @@
+using Aeroscope.App;
 using Aeroscope.App.ViewModels;
 using Aeroscope.Core.Bluetooth;
 using Aeroscope.Core.Diagnostics;
@@ -13,6 +14,7 @@ public class MainViewModelTests
 
     private readonly FakeScopeScanner _scanner = new();
     private readonly FakeScopeLink _link = new();
+    private readonly FakePreferencesStore _preferences = new();
     private readonly List<ulong> _connectedAddresses = [];
     private Exception? _connectFailure;
     private readonly MainViewModel _viewModel;
@@ -20,7 +22,7 @@ public class MainViewModelTests
     public MainViewModelTests()
     {
         // Run posted actions inline: the tests play the role of the UI thread.
-        _viewModel = new MainViewModel(_scanner, ConnectAsync, action => action());
+        _viewModel = new MainViewModel(_scanner, ConnectAsync, action => action(), _preferences);
     }
 
     private Task<IScopeLink> ConnectAsync(ulong address)
@@ -166,6 +168,202 @@ public class MainViewModelTests
         Assert.Equal("Connection failed", _viewModel.Status);
         Assert.Contains("Service discovery failed: Unreachable.", LogTexts);
         Assert.True(_viewModel.ConnectCommand.CanExecute(null));
+    }
+
+    // Auto-connect
+
+    private readonly ScopeAdvertisement _scopeAdvertisement = new(ScopeAddress, "Aeroscope", -68, AdvertisesScopeService: true);
+
+    private MainViewModel RememberingTheScope(bool autoConnect = true)
+    {
+        var preferences = new FakePreferencesStore(new Preferences { LastScope = ScopeAddress, AutoConnect = autoConnect });
+        return new MainViewModel(_scanner, ConnectAsync, action => action(), preferences);
+    }
+
+    [Fact]
+    public async Task Connecting_remembers_the_scope()
+    {
+        await ConnectToScopeAsync();
+
+        Assert.Equal(ScopeAddress, _preferences.Stored.LastScope);
+        Assert.True(_preferences.Stored.AutoConnect); // on by default
+    }
+
+    [Fact]
+    public void Without_a_remembered_scope_start_up_does_nothing()
+    {
+        _viewModel.Start();
+
+        Assert.Equal(0, _scanner.StartCount);
+        Assert.Equal("Not connected", _viewModel.Status);
+    }
+
+    [Fact]
+    public void Start_up_looks_for_the_last_scope()
+    {
+        var viewModel = RememberingTheScope();
+
+        viewModel.Start();
+
+        Assert.True(viewModel.IsScanning);
+        Assert.Equal("Looking for C6:A7:C8:D1:1A:B1...", viewModel.Status);
+    }
+
+    [Fact]
+    public void The_last_scope_is_connected_to_once_it_advertises_the_scope_service()
+    {
+        var viewModel = RememberingTheScope();
+        viewModel.Start();
+
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(1, "Headphones", -60, false));
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress, "Aeroscope", -68, AdvertisesScopeService: false)); // name first
+        Assert.Empty(_connectedAddresses);
+        Assert.Equal(ScopeAddress, viewModel.SelectedDevice?.Address); // already picked in the list
+
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        Assert.Equal([ScopeAddress], _connectedAddresses);
+        Assert.Equal(ConnectionState.Connected, viewModel.State);
+        Assert.False(viewModel.IsScanning);
+    }
+
+    [Fact]
+    public void Another_aeroscope_is_not_connected_to()
+    {
+        var viewModel = RememberingTheScope();
+        viewModel.Start();
+
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress + 1, "Aeroscope", -68, AdvertisesScopeService: true));
+
+        Assert.Empty(_connectedAddresses);
+    }
+
+    [Fact]
+    public void Auto_connect_off_does_not_look_for_the_scope()
+    {
+        var viewModel = RememberingTheScope(autoConnect: false);
+
+        viewModel.Start();
+        viewModel.ToggleScanCommand.Execute(null);
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        Assert.False(viewModel.AutoConnect);
+        Assert.Empty(_connectedAddresses);
+    }
+
+    [Fact]
+    public void A_failed_auto_connect_is_not_retried()
+    {
+        _connectFailure = new ScopeConnectionException("Service discovery failed: Unreachable.");
+        var viewModel = RememberingTheScope();
+        viewModel.Start();
+
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+        viewModel.ToggleScanCommand.Execute(null);
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        Assert.Equal([ScopeAddress], _connectedAddresses);
+        Assert.Equal("Connection failed", viewModel.Status);
+    }
+
+    [Fact]
+    public void No_reconnect_after_the_user_disconnects()
+    {
+        var viewModel = RememberingTheScope();
+        viewModel.Start();
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        viewModel.DisconnectCommand.Execute(null);
+        viewModel.ToggleScanCommand.Execute(null);
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        Assert.Equal([ScopeAddress], _connectedAddresses);
+        Assert.Equal(ConnectionState.Disconnected, viewModel.State);
+    }
+
+    [Fact]
+    public void Turning_auto_connect_on_is_saved_and_looks_for_the_scope()
+    {
+        var preferences = new FakePreferencesStore(new Preferences { LastScope = ScopeAddress, AutoConnect = false });
+        var viewModel = new MainViewModel(_scanner, ConnectAsync, action => action(), preferences);
+        viewModel.Start();
+        viewModel.ToggleScanCommand.Execute(null);
+        _scanner.RaiseAdvertisement(_scopeAdvertisement); // already in the list
+
+        viewModel.AutoConnect = true;
+
+        Assert.True(preferences.Stored.AutoConnect);
+        Assert.Equal([ScopeAddress], _connectedAddresses);
+    }
+
+    [Fact]
+    public void Turning_auto_connect_off_is_saved()
+    {
+        var preferences = new FakePreferencesStore(new Preferences { LastScope = ScopeAddress });
+        var viewModel = new MainViewModel(_scanner, ConnectAsync, action => action(), preferences);
+        viewModel.Start();
+
+        viewModel.AutoConnect = false;
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        Assert.Empty(_connectedAddresses);
+        Assert.Equal(new Preferences { LastScope = ScopeAddress, AutoConnect = false }, preferences.Stored);
+    }
+
+    [Fact]
+    public void Loading_the_preferences_saves_nothing()
+    {
+        var preferences = new FakePreferencesStore(new Preferences { LastScope = ScopeAddress, AutoConnect = false });
+
+        new MainViewModel(_scanner, ConnectAsync, action => action(), preferences).Start();
+
+        Assert.Equal(0, preferences.SaveCount);
+    }
+
+    // Connection dialog
+
+    [Fact]
+    public void A_scope_must_be_picked_without_a_remembered_one_or_with_auto_connect_off()
+    {
+        Assert.True(_viewModel.ShouldPickScope);
+        Assert.False(RememberingTheScope().ShouldPickScope);
+        Assert.True(RememberingTheScope(autoConnect: false).ShouldPickScope);
+    }
+
+    [Fact]
+    public void Opening_the_dialog_scans_and_closing_it_stops()
+    {
+        _viewModel.ConnectionDialogOpened();
+        Assert.True(_viewModel.IsScanning);
+
+        _viewModel.ConnectionDialogClosed();
+        Assert.False(_viewModel.IsScanning);
+        Assert.Equal(1, _scanner.StopCount);
+    }
+
+    [Fact]
+    public async Task Opening_the_dialog_while_connected_does_not_scan()
+    {
+        await ConnectToScopeAsync();
+
+        _viewModel.ConnectionDialogOpened();
+
+        Assert.False(_viewModel.IsScanning);
+    }
+
+    [Fact]
+    public void Closing_the_dialog_keeps_looking_for_the_last_scope()
+    {
+        var viewModel = RememberingTheScope();
+        viewModel.Start();
+
+        viewModel.ConnectionDialogOpened();
+        viewModel.ConnectionDialogClosed();
+        _scanner.RaiseAdvertisement(_scopeAdvertisement);
+
+        Assert.Equal(1, _scanner.StartCount);
+        Assert.Equal([ScopeAddress], _connectedAddresses);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using Aeroscope.App;
 using Aeroscope.Core.Bluetooth;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -62,6 +63,22 @@ internal sealed class FakeScopeLink : IScopeLink
     public void RaiseDiagnostic(string message) => Diagnostic?.Invoke(this, message);
 
     public void Dispose() => IsDisposed = true;
+}
+
+/// <summary>Preferences in memory: what the app would load, and what it saved.</summary>
+internal sealed class FakePreferencesStore(Preferences? stored = null) : IPreferencesStore
+{
+    public Preferences Stored { get; private set; } = stored ?? new();
+
+    public int SaveCount { get; private set; }
+
+    public Preferences Load() => Stored;
+
+    public void Save(Preferences preferences)
+    {
+        Stored = preferences;
+        SaveCount++;
+    }
 }
 
 internal sealed class FakeScopeScanner : IScopeScanner

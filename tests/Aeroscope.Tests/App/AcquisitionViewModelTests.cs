@@ -975,7 +975,30 @@ public class AcquisitionViewModelTests
         Assert.Equal(0, _viewModel.HistoryPosition);
     }
 
-    // Device button
+    // Run/Stop button and the device button
+
+    [Fact]
+    public async Task Run_stop_button_runs_when_stopped_and_stops_otherwise()
+    {
+        Assert.False(_viewModel.RunStopCommand.CanExecute(null));
+        await MakeReadyAsync();
+        Assert.Equal("Run", _viewModel.RunStopText);
+
+        await _viewModel.RunStopCommand.ExecuteAsync(null);
+        Assert.Equal(RunMode.Running, _viewModel.RunMode);
+        Assert.Equal("Stop", _viewModel.RunStopText);
+
+        await _viewModel.RunStopCommand.ExecuteAsync(null);
+        Assert.Equal(RunMode.Stopped, _viewModel.RunMode);
+        Assert.Equal("Run", _viewModel.RunStopText);
+
+        await _viewModel.SingleCommand.ExecuteAsync(null);
+        Assert.Equal("Stop", _viewModel.RunStopText);
+        await _viewModel.RunStopCommand.ExecuteAsync(null);
+        Assert.Equal(RunMode.Stopped, _viewModel.RunMode);
+
+        Assert.Equal(["R", "S", "X", "S", "X", "R", "S", "X"], Commands);
+    }
 
     [Fact]
     public async Task Button_toggles_run_and_stop()

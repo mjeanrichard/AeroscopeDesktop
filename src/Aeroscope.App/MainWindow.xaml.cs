@@ -9,6 +9,10 @@ namespace Aeroscope.App;
 
 public partial class MainWindow : Window
 {
+    /// <summary>Opens the connection dialog (Scope menu, Ctrl+K, or double-clicking the status).</summary>
+    public static readonly RoutedUICommand ShowConnection =
+        new("_Connection...", nameof(ShowConnection), typeof(MainWindow), [new KeyGesture(Key.K, ModifierKeys.Control)]);
+
     private readonly MainViewModel _viewModel = new();
     private readonly DispatcherTimer _progressTimer;
     private bool _scrollPending;
@@ -23,7 +27,22 @@ public partial class MainWindow : Window
             (_, _) => _viewModel.Acquisition.UpdateProgress(), Dispatcher);
 
         _viewModel.Log.CollectionChanged += OnLogChanged;
+        Loaded += (_, _) =>
+        {
+            _viewModel.Start();
+            if (_viewModel.ShouldPickScope)
+            {
+                // Once the main window has drawn.
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, ShowConnectionDialog);
+            }
+        };
     }
+
+    private void ShowConnectionDialog() => new ConnectionWindow(_viewModel) { Owner = this }.ShowDialog();
+
+    private void OnShowConnection(object sender, ExecutedRoutedEventArgs e) => ShowConnectionDialog();
+
+    private void OnStatusDoubleClick(object sender, MouseButtonEventArgs e) => ShowConnectionDialog();
 
     /// <summary>
     /// Keeps the newest log line in view. Scrolling is deferred: calling ScrollIntoView

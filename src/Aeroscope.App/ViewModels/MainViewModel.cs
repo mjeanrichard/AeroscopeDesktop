@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Data;
@@ -24,24 +25,35 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly TimeProvider _time;
     private readonly FrameAssembler _frameAssembler = new();
     private readonly Dictionary<ulong, DeviceItem> _devicesByAddress = [];
+    private readonly IPreferencesStore _preferencesStore;
+    private Preferences _preferences;
+
+    /// <summary>Connect when the last scope advertises: from start-up or turning auto-connect on, until a connection is tried.</summary>
+    private bool _autoConnectArmed;
+
     private IScopeLink? _connection;
     private DateTimeOffset _lastDataReceived;
     private DateTimeOffset _frameStarted;
 
     public MainViewModel()
-        : this(new ScopeScanner(), async address => await ScopeConnection.ConnectAsync(address), PostTo(Application.Current.Dispatcher))
+        : this(new ScopeScanner(), async address => await ScopeConnection.ConnectAsync(address), PostTo(Application.Current.Dispatcher),
+            new FilePreferencesStore(FilePreferencesStore.DefaultPath))
     {
     }
 
     /// <param name="scanner">Source of advertisements.</param>
     /// <param name="connect">Opens a link to the device with the given address.</param>
     /// <param name="post">Runs an action on the UI thread; BLE events arrive on thread-pool threads.</param>
+    /// <param name="preferences">Where the last scope and auto-connect are remembered.</param>
     /// <param name="time">Clock for packet arrival times; the system clock if null.</param>
-    public MainViewModel(IScopeScanner scanner, Func<ulong, Task<IScopeLink>> connect, Action<Action> post, TimeProvider? time = null)
+    public MainViewModel(IScopeScanner scanner, Func<ulong, Task<IScopeLink>> connect, Action<Action> post, IPreferencesStore preferences, TimeProvider? time = null)
     {
         _scanner = scanner;
         _connect = connect;
         _post = post;
+        _preferencesStore = preferences;
+        _preferences = preferences.Load();
+        AutoConnect = _preferences.AutoConnect;
         _time = time ?? TimeProvider.System;
         Acquisition = new AcquisitionViewModel(
             (characteristic, payload) => WriteAsync(characteristic, payload, characteristic == AeroscopeGatt.ScopeState ? LogKind.State : LogKind.In),
@@ -83,12 +95,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public partial DeviceItem? SelectedDevice { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(SendCommandCommand), nameof(SendCustomCommandCommand), nameof(SendSettingsCommand))]
     public partial ConnectionState State { get; set; }
 
+    public bool IsDisconnected => State == ConnectionState.Disconnected;
+
     [ObservableProperty]
     public partial string Status { get; set; } = "Not connected";
+
+    /// <summary>Connect to the last scope as soon as it is in range (remembered between runs).</summary>
+    [ObservableProperty]
+    public partial bool AutoConnect { get; set; }
 
     /// <summary>Raw data packets are many per frame, so they are only logged on request.</summary>
     [ObservableProperty]
@@ -99,21 +118,125 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnShowAllDevicesChanged(bool value) => DevicesView.Refresh();
 
+    partial void OnAutoConnectChanged(bool value)
+    {
+        if (value == _preferences.AutoConnect)
+        {
+            return; // loaded from the preferences
+        }
+
+        SavePreferences(_preferences with { AutoConnect = value });
+        _autoConnectArmed = value;
+        if (value)
+        {
+            LookForLastScope();
+        }
+    }
+
+    /// <summary>Call once the window is up: with auto-connect on, looks for the last scope.</summary>
+    public void Start()
+    {
+        _autoConnectArmed = AutoConnect;
+        if (AutoConnect)
+        {
+            LookForLastScope();
+        }
+    }
+
+    /// <summary>Nothing will connect by itself: no remembered scope, or auto-connect off.</summary>
+    public bool ShouldPickScope => _preferences.LastScope is null || !AutoConnect;
+
+    /// <summary>The connection dialog opened: scans for scopes, unless connected or already scanning.</summary>
+    public void ConnectionDialogOpened()
+    {
+        if (State == ConnectionState.Disconnected && !IsScanning)
+        {
+            StartScan();
+        }
+    }
+
+    /// <summary>The connection dialog closed: stops scanning, unless auto-connect is still looking for the last scope.</summary>
+    public void ConnectionDialogClosed()
+    {
+        if (IsScanning && !(_autoConnectArmed && _preferences.LastScope is not null))
+        {
+            StopScan();
+        }
+    }
+
+    private void LookForLastScope()
+    {
+        if (_preferences.LastScope is not { } address || State != ConnectionState.Disconnected)
+        {
+            return;
+        }
+
+        if (!IsScanning)
+        {
+            StartScan();
+        }
+        else if (_devicesByAddress.TryGetValue(address, out var seen) && seen.IsAeroscope)
+        {
+            TryAutoConnect(seen);
+            return;
+        }
+
+        Status = $"Looking for {BluetoothAddress.Format(address)}...";
+    }
+
+    private void TryAutoConnect(DeviceItem device)
+    {
+        if (_autoConnectArmed && device.IsAeroscope && device.Address == _preferences.LastScope && State == ConnectionState.Disconnected)
+        {
+            AddLog(LogEntry.Message(LogKind.Info, "The last scope is in range; connecting"));
+            SelectedDevice = device;
+            _ = ConnectCommand.ExecuteAsync(null);
+        }
+    }
+
     [RelayCommand]
     private void ToggleScan()
     {
         if (IsScanning)
         {
-            _scanner.Stop();
-            IsScanning = false;
-            return;
+            StopScan();
         }
+        else
+        {
+            StartScan();
+        }
+    }
 
+    private void StopScan()
+    {
+        _scanner.Stop();
+        IsScanning = false;
+        if (State == ConnectionState.Disconnected)
+        {
+            Status = "Not connected";
+        }
+    }
+
+    private void StartScan()
+    {
         Devices.Clear();
         _devicesByAddress.Clear();
         _scanner.Start();
         IsScanning = true;
         AddLog(LogEntry.Message(LogKind.Info, "Scanning for BLE devices..."));
+    }
+
+    private void SavePreferences(Preferences preferences)
+    {
+        _preferences = preferences;
+        try
+        {
+            _preferencesStore.Save(preferences);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddLog(LogEntry.Message(LogKind.Error, $"Could not save the preferences: {ex.Message}"));
+        }
     }
 
     private bool CanConnect() => SelectedDevice is not null && State == ConnectionState.Disconnected;
@@ -122,6 +245,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task ConnectAsync()
     {
         var device = SelectedDevice!;
+        _autoConnectArmed = false; // one try; after that the user connects
         if (IsScanning)
         {
             // Scanning competes with the connection for radio time.
@@ -158,6 +282,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             State = ConnectionState.Connected;
             Status = $"Connected to {connection.Name}";
             AddLog(LogEntry.Message(LogKind.Info, "Connected; notifications enabled on Scope Out and Scope Data"));
+            if (_preferences.LastScope != device.Address)
+            {
+                SavePreferences(_preferences with { LastScope = device.Address });
+            }
 
             // Same start-up queries as the Android app; the scope answers "PF" once its FPGA is ready.
             await SendCommandAsync("QTI");
@@ -274,6 +402,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             item = new DeviceItem(ad.Address);
             _devicesByAddress.Add(ad.Address, item);
             Devices.Add(item);
+            if (SelectedDevice is null && ad.Address == _preferences.LastScope)
+            {
+                SelectedDevice = item;
+            }
         }
 
         // Name and service UUID can arrive in separate packets (advert vs scan response).
@@ -288,6 +420,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             item.IsAeroscope = true;
             DevicesView.Refresh();
             AddLog(LogEntry.Message(LogKind.Info, $"Found Aeroscope {item.DisplayName} ({item.AddressText})"));
+            TryAutoConnect(item);
         }
     }
 

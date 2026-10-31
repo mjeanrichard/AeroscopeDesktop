@@ -31,6 +31,24 @@
             <Setter Property="Margin" Value="0,1,12,1" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!-- One card per group of settings -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="CardHeader" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="RowLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
         <!-- A horizontal scroll bar that stays full size (the Fluent one shrinks to a thin line unless hovered):
              a rounded track, clicking it pages, and a thumb that is as long as the part shown -->
         <Style x:Key="PageTrack" TargetType="RepeatButton">
@@ -101,20 +119,6 @@
     </Window.CommandBindings>
 
     <DockPanel>
-        <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_Scope">
-                <MenuItem Command="local:MainWindow.ShowConnection" />
-                <MenuItem Header="_Disconnect" Command="{Binding DisconnectCommand}" />
-                <Separator />
-                <MenuItem Header="_Auto-connect" IsCheckable="True" IsChecked="{Binding AutoConnect}"
-                          ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
-                <Separator />
-                <MenuItem Command="local:MainWindow.Calibrate"
-                          ToolTip="Measure and store the zero offset of every range. Short the probe tip to its ground lead first." />
-                <MenuItem Command="local:MainWindow.ClearCalibration" />
-            </MenuItem>
-        </Menu>
-
         <!-- Connection and what the scope reports about itself -->
         <StatusBar DockPanel.Dock="Bottom" Margin="0,6,0,0">
             <StatusBar.Resources>
@@ -279,24 +283,6 @@
 
                     <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
                         <ScrollViewer.Resources>
-                            <!-- One card per group of settings -->
-                            <Style x:Key="Card" TargetType="Border">
-                                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-                                <Setter Property="BorderThickness" Value="1" />
-                                <Setter Property="CornerRadius" Value="6" />
-                                <Setter Property="Padding" Value="12,8" />
-                                <Setter Property="Margin" Value="0,0,0,8" />
-                            </Style>
-                            <Style x:Key="CardHeader" TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="SemiBold" />
-                                <Setter Property="Margin" Value="0,0,0,8" />
-                            </Style>
-                            <Style x:Key="RowLabel" TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <Setter Property="VerticalAlignment" Value="Center" />
-                                <Setter Property="Margin" Value="0,0,8,0" />
-                            </Style>
                             <!-- A row of radio buttons that look like toggle buttons -->
                             <Style x:Key="Segment" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
                                 <Setter Property="Padding" Value="0,5" />
@@ -509,6 +495,82 @@
                 </Grid>
             </TabItem>
 
+            <!-- Connection, what the scope reports about itself, and its calibration -->
+            <TabItem Header="Device">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                    <StackPanel Margin="6" MaxWidth="640" HorizontalAlignment="Left">
+                        <StackPanel.Resources>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Margin" Value="0,0,6,0" />
+                                <Setter Property="MinWidth" Value="110" />
+                            </Style>
+                            <Style x:Key="Value" TargetType="TextBlock">
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
+                                <Setter Property="Margin" Value="0,3" />
+                            </Style>
+                        </StackPanel.Resources>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Connection" Style="{StaticResource CardHeader}" />
+                                <TextBlock Text="{Binding Status}" Style="{StaticResource Value}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Connect..." Command="local:MainWindow.ShowConnection"
+                                            ToolTip="Scan for scopes and connect to one (Ctrl+K, or double-click the status bar)" />
+                                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}" />
+                                </StackPanel>
+                                <CheckBox Content="Auto-connect" IsChecked="{Binding AutoConnect}" Margin="0,8,0,0"
+                                          ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" DataContext="{Binding Scope}">
+                            <StackPanel>
+                                <TextBlock Text="Scope" Style="{StaticResource CardHeader}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Firmware" Style="{StaticResource RowLabel}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Firmware}" Style="{StaticResource Value}" />
+                                    <TextBlock Grid.Row="1" Text="Serial" Style="{StaticResource RowLabel}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" Style="{StaticResource Value}" />
+                                    <TextBlock Grid.Row="2" Text="Power" Style="{StaticResource RowLabel}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Power}" Style="{StaticResource Value}" />
+                                    <TextBlock Grid.Row="3" Text="Battery" Style="{StaticResource RowLabel}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Battery}" ToolTip="{Binding BatteryLevel}" Style="{StaticResource Value}" />
+                                    <TextBlock Grid.Row="4" Text="Temperature" Style="{StaticResource RowLabel}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Temperature}" Style="{StaticResource Value}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Calibration" Style="{StaticResource CardHeader}" />
+                                <TextBlock Text="{Binding Scope.Calibration}" Style="{StaticResource Value}" />
+                                <TextBlock Text="Measures and stores the zero offset of every range. Clip the probe tip to its ground lead first."
+                                           Style="{StaticResource Value}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Calibrate..." Command="local:MainWindow.Calibrate" />
+                                    <Button Content="Clear..." Command="local:MainWindow.ClearCalibration"
+                                            ToolTip="Forget the stored calibration" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- Protocol diagnostics -->
             <TabItem Header="Diagnostics">
                 <Grid Margin="6">
@@ -519,14 +581,6 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <StackPanel Orientation="Horizontal" DataContext="{Binding Scope}" Margin="0,0,0,4">
-                            <TextBlock Text="Firmware" Style="{StaticResource Label}" />
-                            <TextBlock Text="{Binding Firmware}" Margin="0,0,24,0" />
-                            <TextBlock Text="Serial" Style="{StaticResource Label}" />
-                            <TextBlock Text="{Binding SerialNumber}" Margin="0,0,24,0" />
-                            <TextBlock Text="Calibration" Style="{StaticResource Label}" />
-                            <TextBlock Text="{Binding Calibration}" />
-                        </StackPanel>
                         <TextBlock Text="Characteristics" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
                         <ListView ItemsSource="{Binding Characteristics}" MinHeight="60">
                             <ListView.View>

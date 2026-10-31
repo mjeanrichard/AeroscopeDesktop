@@ -149,7 +149,8 @@ public class MainViewModelTests
         Assert.Equal("Connected to Aeroscope", _viewModel.Status);
         Assert.Equal(FakeScopeLink.RealCharacteristics, _viewModel.Characteristics);
         Assert.Equal(
-            [(AeroscopeGatt.ScopeIn, Captures.Packet("51 54 49")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 50")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 43"))],
+            [(AeroscopeGatt.ScopeIn, Captures.Packet("51 54 49")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 50")), (AeroscopeGatt.ScopeIn, Captures.Packet("51 43")),
+             (AeroscopeGatt.ScopeIn, Captures.Packet("51 56 52"))],
             _link.Writes.Select(w => (w.Characteristic, w.Packet)));
         Assert.False(_viewModel.ConnectCommand.CanExecute(null));
         Assert.True(_viewModel.DisconnectCommand.CanExecute(null));

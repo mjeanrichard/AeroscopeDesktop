@@ -288,10 +288,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 SavePreferences(_preferences with { LastScope = device.Address });
             }
 
-            // Same start-up queries as the Android app; the scope answers "PF" once its FPGA is ready.
+            // Same start-up queries as the Android app, plus the version for the Device tab;
+            // the scope answers "PF" once its FPGA is ready.
             await SendCommandAsync("QTI");
             await SendCommandAsync("QP");
             await SendCommandAsync("QC");
+            await SendCommandAsync("QVR");
         }
         catch (Exception ex)
         {

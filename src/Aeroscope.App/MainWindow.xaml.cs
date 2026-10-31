@@ -10,7 +10,7 @@ namespace Aeroscope.App;
 
 public partial class MainWindow : Window
 {
-    /// <summary>Opens the connection dialog (Scope menu, Ctrl+K, or double-clicking the status).</summary>
+    /// <summary>Opens the connection dialog (Device tab, Ctrl+K, or double-clicking the status).</summary>
     public static readonly RoutedUICommand ShowConnection =
         new("_Connection...", nameof(ShowConnection), typeof(MainWindow), [new KeyGesture(Key.K, ModifierKeys.Control)]);
 

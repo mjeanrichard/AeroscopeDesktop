@@ -123,548 +123,562 @@
         <CommandBinding Command="local:MainWindow.Sleep" CanExecute="CanSleep" Executed="OnSleep" />
     </Window.CommandBindings>
 
-    <DockPanel>
-        <!-- Connection and what the scope reports about itself -->
-        <StatusBar DockPanel.Dock="Bottom" Margin="0,6,0,0">
-            <StatusBar.Resources>
-                <Style TargetType="TextBlock">
-                    <Setter Property="Margin" Value="4,0" />
-                </Style>
-            </StatusBar.Resources>
-            <StatusBarItem MouseDoubleClick="OnStatusDoubleClick" ToolTip="Double-click to connect or disconnect (Ctrl+K)">
-                <TextBlock Text="{Binding Status}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Power state">
-                <TextBlock Text="{Binding Power}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem DataContext="{Binding Scope}" ToolTip="{Binding BatteryLevel}">
-                <TextBlock Text="{Binding Battery, StringFormat=Battery {0}}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Temperature">
-                <TextBlock Text="{Binding Temperature}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem DataContext="{Binding Scope}" ToolTip="Frames received since connecting">
-                <TextBlock Text="{Binding FramesReceived, StringFormat=Frames {0}}" />
-            </StatusBarItem>
-        </StatusBar>
+    <Grid>
+        <DockPanel>
+            <!-- Connection and what the scope reports about itself -->
+            <StatusBar DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                <StatusBar.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Margin" Value="4,0" />
+                    </Style>
+                </StatusBar.Resources>
+                <StatusBarItem MouseDoubleClick="OnStatusDoubleClick" ToolTip="Double-click to connect or disconnect (Ctrl+K)">
+                    <TextBlock Text="{Binding Status}" />
+                </StatusBarItem>
+                <Separator />
+                <StatusBarItem DataContext="{Binding Scope}" ToolTip="Power state">
+                    <TextBlock Text="{Binding Power}" />
+                </StatusBarItem>
+                <Separator />
+                <StatusBarItem DataContext="{Binding Scope}" ToolTip="{Binding BatteryLevel}">
+                    <TextBlock Text="{Binding Battery, StringFormat=Battery {0}}" />
+                </StatusBarItem>
+                <Separator />
+                <StatusBarItem DataContext="{Binding Scope}" ToolTip="Temperature">
+                    <TextBlock Text="{Binding Temperature}" />
+                </StatusBarItem>
+                <Separator />
+                <StatusBarItem DataContext="{Binding Scope}" ToolTip="Frames received since connecting">
+                    <TextBlock Text="{Binding FramesReceived, StringFormat=Frames {0}}" />
+                </StatusBarItem>
+            </StatusBar>
 
-        <TabControl Margin="10,0">
-            <!-- Scope screen and acquisition controls -->
-            <TabItem Header="Scope" DataContext="{Binding Acquisition}">
-                <Grid Margin="6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="280" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+            <TabControl Margin="10,0">
+                <!-- Scope screen and acquisition controls -->
+                <TabItem Header="Scope" DataContext="{Binding Acquisition}">
+                    <Grid Margin="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="280" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                    <!-- Readouts above the screen, each a fixed width so nothing moves as values change -->
-                    <DockPanel Grid.Row="0" Grid.Column="0">
-                        <DockPanel.Resources>
-                            <Style x:Key="Readout" TargetType="Border">
-                                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-                                <Setter Property="BorderThickness" Value="1" />
-                                <Setter Property="CornerRadius" Value="4" />
-                                <Setter Property="Padding" Value="6,4" />
-                                <Setter Property="Margin" Value="0,0,6,6" />
-                            </Style>
-                            <Style x:Key="ReadoutCaption" TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <Setter Property="FontSize" Value="12" />
-                                <Setter Property="Margin" Value="0,0,6,0" />
-                                <Setter Property="VerticalAlignment" Value="Center" />
-                            </Style>
-                            <!-- Value widths fit the longest text each can show in Consolas 13 (about 7.2 px a character) -->
-                            <Style x:Key="ReadoutValue" TargetType="TextBlock">
-                                <Setter Property="FontFamily" Value="Consolas" />
-                                <Setter Property="FontSize" Value="13" />
-                                <Setter Property="TextAlignment" Value="Right" />
-                                <Setter Property="VerticalAlignment" Value="Center" />
-                            </Style>
-                        </DockPanel.Resources>
-                        <WrapPanel>
-                            <Border Style="{StaticResource Readout}" ToolTip="Vertical scale">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="CH" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding Range}" Style="{StaticResource ReadoutValue}" Width="76" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource Readout}" ToolTip="Horizontal scale of the screen (Ctrl+wheel zooms)">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Time" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding ViewScaleText}" Style="{StaticResource ReadoutValue}" Width="82" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource Readout}" ToolTip="Sample rate of the data shown, and how much the view magnifies it (x1 is 50 samples a division)">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Rate" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding ViewRateText}" Style="{StaticResource ReadoutValue}" Width="62" />
-                                    <TextBlock Text="{Binding ZoomText}" Style="{StaticResource ReadoutValue}" Width="54"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Vpp" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding PeakToPeakText}" Style="{StaticResource ReadoutValue}" Width="62" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Max" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding MaximumText}" Style="{StaticResource ReadoutValue}" Width="62" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Min" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding MinimumText}" Style="{StaticResource ReadoutValue}" Width="62" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Mean" Style="{StaticResource ReadoutCaption}" />
-                                    <TextBlock Text="{Binding MeanText}" Style="{StaticResource ReadoutValue}" Width="62" />
-                                </StackPanel>
-                            </Border>
-                        </WrapPanel>
-                    </DockPanel>
-
-                    <DockPanel Grid.Row="1" Grid.Column="0">
-                        <!-- Where the scope is in a long frame cycle -->
-                        <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0" Visibility="{Binding ShowProgress, Converter={StaticResource Visible}}">
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" FontFamily="Consolas" Margin="8,0,0,0" MinWidth="230" />
-                            <ProgressBar Height="6" VerticalAlignment="Center" Maximum="1" Value="{Binding ProgressFraction, Mode=OneWay}"
-                                         IsIndeterminate="{Binding ProgressIndeterminate}"
-                                         ToolTip="The whole frame cycle: the capture (from the time base and frame size, within about 0.3 s), then the transfer (by packets received)." />
+                        <!-- Readouts above the screen, each a fixed width so nothing moves as values change -->
+                        <DockPanel Grid.Row="0" Grid.Column="0">
+                            <DockPanel.Resources>
+                                <Style x:Key="Readout" TargetType="Border">
+                                    <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="CornerRadius" Value="4" />
+                                    <Setter Property="Padding" Value="6,4" />
+                                    <Setter Property="Margin" Value="0,0,6,6" />
+                                </Style>
+                                <Style x:Key="ReadoutCaption" TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <Setter Property="FontSize" Value="12" />
+                                    <Setter Property="Margin" Value="0,0,6,0" />
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                </Style>
+                                <!-- Value widths fit the longest text each can show in Consolas 13 (about 7.2 px a character) -->
+                                <Style x:Key="ReadoutValue" TargetType="TextBlock">
+                                    <Setter Property="FontFamily" Value="Consolas" />
+                                    <Setter Property="FontSize" Value="13" />
+                                    <Setter Property="TextAlignment" Value="Right" />
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                </Style>
+                            </DockPanel.Resources>
+                            <WrapPanel>
+                                <Border Style="{StaticResource Readout}" ToolTip="Vertical scale">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="CH" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding Range}" Style="{StaticResource ReadoutValue}" Width="76" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Readout}" ToolTip="Horizontal scale of the screen (Ctrl+wheel zooms)">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Time" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding ViewScaleText}" Style="{StaticResource ReadoutValue}" Width="82" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Readout}" ToolTip="Sample rate of the data shown, and how much the view magnifies it (x1 is 50 samples a division)">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Rate" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding ViewRateText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                        <TextBlock Text="{Binding ZoomText}" Style="{StaticResource ReadoutValue}" Width="54"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Vpp" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding PeakToPeakText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Max" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding MaximumText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Min" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding MinimumText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Readout}" ToolTip="Over the whole frame, also when zoomed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Mean" Style="{StaticResource ReadoutCaption}" />
+                                        <TextBlock Text="{Binding MeanText}" Style="{StaticResource ReadoutValue}" Width="62" />
+                                    </StackPanel>
+                                </Border>
+                            </WrapPanel>
                         </DockPanel>
-                        <!-- Pans within a frame wider than the screen while zoomed in -->
-                        <ScrollBar DockPanel.Dock="Bottom" Style="{StaticResource WideScrollBar}" Margin="0,4,0,0"
-                                   Visibility="{Binding CanPan, Converter={StaticResource Visible}}"
-                                   Minimum="0" Maximum="{Binding FramePanMaximum}" ViewportSize="{Binding FramePanViewport}"
-                                   SmallChange="{Binding FramePanSmallChange}" LargeChange="{Binding FramePanViewport}"
-                                   Value="{Binding FramePanPosition}" ToolTip="Pan within the frame" />
-                        <controls:WaveformView Traces="{Binding Screen.Traces}"
-                                               VoltsPerDivision="{Binding Range.VoltsPerDivision}"
-                                               SecondsPerDivision="{Binding ViewSecondsPerDivision}"
-                                               CentreSeconds="{Binding ViewCentreSeconds}"
-                                               MouseWheel="OnScreenMouseWheel"
-                                               ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with. Drag the green ground marker to move the offset, the orange trigger line to set the level. Click anywhere else for a cursor showing the measured value there; drag it to move it, right-click to remove it."
-                                               CentreVolts="{Binding OffsetVolts}"
-                                               TriggerLevelVolts="{Binding TriggerLevelVolts}"
-                                               FrameTriggerLevelVolts="{Binding FrameTriggerLevelVolts}"
-                                               ShowTrigger="{Binding HasTrigger}" />
-                    </DockPanel>
 
-                    <!-- History: scroll back through everything received while running -->
-                    <DockPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
-                        <Button DockPanel.Dock="Right" Content="1:1" Command="{Binding ResetZoomCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Back to 50 samples a division" />
-                        <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Zoom in (Ctrl+wheel), down to 50 ns/div. Display only: the sample rate stays." />
-                        <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="18,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Zoom out (Ctrl+wheel), up to the whole frame or roll recording. Display only: the sample rate stays." />
-                        <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearHistoryCommand}" Margin="6,0,0,0"
-                                ToolTip="Forget the recorded history" />
-                        <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
-                                ToolTip="Follow the newest data" />
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
-                        <ScrollBar Style="{StaticResource WideScrollBar}" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
-                                   Minimum="0" Maximum="{Binding HistoryMaximum}" ViewportSize="{Binding HistoryViewport}"
-                                   SmallChange="{Binding HistorySmallChange}" LargeChange="{Binding HistoryLargeChange}"
-                                   Value="{Binding HistoryPosition}" />
-                    </DockPanel>
+                        <DockPanel Grid.Row="1" Grid.Column="0">
+                            <!-- Where the scope is in a long frame cycle -->
+                            <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0" Visibility="{Binding ShowProgress, Converter={StaticResource Visible}}">
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" FontFamily="Consolas" Margin="8,0,0,0" MinWidth="230" />
+                                <ProgressBar Height="6" VerticalAlignment="Center" Maximum="1" Value="{Binding ProgressFraction, Mode=OneWay}"
+                                             IsIndeterminate="{Binding ProgressIndeterminate}"
+                                             ToolTip="The whole frame cycle: the capture (from the time base and frame size, within about 0.3 s), then the transfer (by packets received)." />
+                            </DockPanel>
+                            <!-- Pans within a frame wider than the screen while zoomed in -->
+                            <ScrollBar DockPanel.Dock="Bottom" Style="{StaticResource WideScrollBar}" Margin="0,4,0,0"
+                                       Visibility="{Binding CanPan, Converter={StaticResource Visible}}"
+                                       Minimum="0" Maximum="{Binding FramePanMaximum}" ViewportSize="{Binding FramePanViewport}"
+                                       SmallChange="{Binding FramePanSmallChange}" LargeChange="{Binding FramePanViewport}"
+                                       Value="{Binding FramePanPosition}" ToolTip="Pan within the frame" />
+                            <controls:WaveformView Traces="{Binding Screen.Traces}"
+                                                   VoltsPerDivision="{Binding Range.VoltsPerDivision}"
+                                                   SecondsPerDivision="{Binding ViewSecondsPerDivision}"
+                                                   CentreSeconds="{Binding ViewCentreSeconds}"
+                                                   MouseWheel="OnScreenMouseWheel"
+                                                   ToolTip="Wheel: step through the history (a frame, or a division in roll mode); Shift+wheel: 10 frames, or a screen. Ctrl+wheel: zoom. Orange: trigger level now; blue: the level the shown frame was taken with. Drag the green ground marker to move the offset, the orange trigger line to set the level. Click anywhere else for a cursor showing the measured value there; drag it to move it, right-click to remove it."
+                                                   CentreVolts="{Binding OffsetVolts}"
+                                                   TriggerLevelVolts="{Binding TriggerLevelVolts}"
+                                                   FrameTriggerLevelVolts="{Binding FrameTriggerLevelVolts}"
+                                                   ShowTrigger="{Binding HasTrigger}" />
+                        </DockPanel>
+
+                        <!-- History: scroll back through everything received while running -->
+                        <DockPanel Grid.Row="2" Grid.Column="0" Margin="0,6,0,0">
+                            <Button DockPanel.Dock="Right" Content="1:1" Command="{Binding ResetZoomCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                    ToolTip="Back to 50 samples a division" />
+                            <Button DockPanel.Dock="Right" Content="+" Command="{Binding ZoomInCommand}" Padding="10,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                                    ToolTip="Zoom in (Ctrl+wheel), down to 50 ns/div. Display only: the sample rate stays." />
+                            <Button DockPanel.Dock="Right" Content="−" Command="{Binding ZoomOutCommand}" Padding="10,4" Margin="18,0,0,0" VerticalAlignment="Center"
+                                    ToolTip="Zoom out (Ctrl+wheel), up to the whole frame or roll recording. Display only: the sample rate stays." />
+                            <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearHistoryCommand}" Margin="6,0,0,0"
+                                    ToolTip="Forget the recorded history" />
+                            <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
+                                    ToolTip="Follow the newest data" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
+                            <ScrollBar Style="{StaticResource WideScrollBar}" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
+                                       Minimum="0" Maximum="{Binding HistoryMaximum}" ViewportSize="{Binding HistoryViewport}"
+                                       SmallChange="{Binding HistorySmallChange}" LargeChange="{Binding HistoryLargeChange}"
+                                       Value="{Binding HistoryPosition}" />
+                        </DockPanel>
 
 
-                    <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
-                        <ScrollViewer.Resources>
-                            <!-- A row of radio buttons that look like toggle buttons -->
-                            <Style x:Key="Segment" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
-                                <Setter Property="Padding" Value="0,5" />
-                                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                                <Setter Property="HorizontalContentAlignment" Value="Center" />
-                            </Style>
-                            <Style x:Key="Step" TargetType="RepeatButton" BasedOn="{StaticResource {x:Type RepeatButton}}">
-                                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-                                <Setter Property="FontSize" Value="10" />
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="Width" Value="28" />
-                                <Setter Property="VerticalAlignment" Value="Stretch" />
-                                <Setter Property="Margin" Value="4,0,0,0" />
-                            </Style>
-                            <Style x:Key="EdgeIcon" TargetType="Path">
-                                <Setter Property="Width" Value="22" />
-                                <Setter Property="Height" Value="16" />
-                                <Setter Property="Margin" Value="0,2" />
-                                <Setter Property="StrokeThickness" Value="1.5" />
-                                <Setter Property="StrokeLineJoin" Value="Round" />
-                                <Setter Property="StrokeStartLineCap" Value="Round" />
-                                <Setter Property="StrokeEndLineCap" Value="Round" />
-                                <Setter Property="Stroke" Value="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
-                            </Style>
-                            <Style x:Key="Entry" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                                <EventSetter Event="KeyDown" Handler="OnEntryKeyDown" />
-                                <EventSetter Event="GotKeyboardFocus" Handler="OnEntryFocused" />
-                                <Setter Property="HorizontalContentAlignment" Value="Right" />
-                                <Setter Property="VerticalContentAlignment" Value="Center" />
-                                <Setter Property="MinWidth" Value="0" />
-                            </Style>
-                        </ScrollViewer.Resources>
+                        <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" VerticalScrollBarVisibility="Auto" Focusable="False">
+                            <ScrollViewer.Resources>
+                                <!-- A row of radio buttons that look like toggle buttons -->
+                                <Style x:Key="Segment" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Setter Property="Padding" Value="0,5" />
+                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                </Style>
+                                <Style x:Key="Step" TargetType="RepeatButton" BasedOn="{StaticResource {x:Type RepeatButton}}">
+                                    <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                                    <Setter Property="FontSize" Value="10" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="VerticalAlignment" Value="Stretch" />
+                                    <Setter Property="Margin" Value="4,0,0,0" />
+                                </Style>
+                                <Style x:Key="EdgeIcon" TargetType="Path">
+                                    <Setter Property="Width" Value="22" />
+                                    <Setter Property="Height" Value="16" />
+                                    <Setter Property="Margin" Value="0,2" />
+                                    <Setter Property="StrokeThickness" Value="1.5" />
+                                    <Setter Property="StrokeLineJoin" Value="Round" />
+                                    <Setter Property="StrokeStartLineCap" Value="Round" />
+                                    <Setter Property="StrokeEndLineCap" Value="Round" />
+                                    <Setter Property="Stroke" Value="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
+                                </Style>
+                                <Style x:Key="Entry" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                    <EventSetter Event="KeyDown" Handler="OnEntryKeyDown" />
+                                    <EventSetter Event="GotKeyboardFocus" Handler="OnEntryFocused" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Right" />
+                                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    <Setter Property="MinWidth" Value="0" />
+                                </Style>
+                            </ScrollViewer.Resources>
 
-                        <StackPanel Margin="0,0,4,0" Grid.IsSharedSizeScope="True">
-                            <Border Style="{StaticResource Card}">
-                                <StackPanel>
+                            <StackPanel Margin="0,0,4,0" Grid.IsSharedSizeScope="True">
+                                <Border Style="{StaticResource Card}">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Command="{Binding RunStopCommand}" Style="{StaticResource AccentButtonStyle}"
+                                                    AutomationProperties.Name="{Binding RunStopText}"
+                                                    HorizontalAlignment="Stretch" Padding="0,6"
+                                                    ToolTip="Run continuously, or stop (also a single shot). The scope's button does the same.">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value="&#xE768;" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding RunStopText}" Value="Stop">
+                                                                        <Setter Property="Text" Value="&#xE71A;" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding RunStopText}" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Grid.Column="2" Command="{Binding SingleCommand}" HorizontalAlignment="Stretch" Padding="0,6" Margin="0"
+                                                    AutomationProperties.Name="Single"
+                                                    ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full.">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                    <TextBlock Text="Single" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+                                        <TextBlock Text="{Binding RunModeText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource Card}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="6" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0" Command="{Binding RunStopCommand}" Style="{StaticResource AccentButtonStyle}"
-                                                AutomationProperties.Name="{Binding RunStopText}"
-                                                HorizontalAlignment="Stretch" Padding="0,6"
-                                                ToolTip="Run continuously, or stop (also a single shot). The scope's button does the same.">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="&#xE768;" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding RunStopText}" Value="Stop">
-                                                                    <Setter Property="Text" Value="&#xE71A;" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock Text="{Binding RunStopText}" />
-                                            </StackPanel>
-                                        </Button>
-                                        <Button Grid.Column="2" Command="{Binding SingleCommand}" HorizontalAlignment="Stretch" Padding="0,6" Margin="0"
-                                                AutomationProperties.Name="Single"
-                                                ToolTip="Capture one frame, then stop. Turn auto trigger off to wait for a real edge. In roll mode, stop when the screen is full.">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                <TextBlock Text="Single" />
-                                            </StackPanel>
-                                        </Button>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="6" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="6" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.ColumnSpan="2" Text="Vertical" Style="{StaticResource CardHeader}" />
+
+                                        <TextBlock Grid.Row="1" Text="Range" Style="{StaticResource RowLabel}" />
+                                        <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" HorizontalAlignment="Stretch" />
+
+                                        <TextBlock Grid.Row="3" Text="Coupling" Style="{StaticResource RowLabel}" />
+                                        <UniformGrid Grid.Row="3" Grid.Column="1" Rows="1">
+                                            <RadioButton GroupName="Coupling" Content="AC" Style="{StaticResource Segment}" Margin="0,0,2,0"
+                                                         IsChecked="{Binding DcCoupled, Converter={StaticResource ValueEquals}, ConverterParameter={StaticResource False}}" />
+                                            <RadioButton GroupName="Coupling" Content="DC" Style="{StaticResource Segment}" Margin="2,0,0,0"
+                                                         IsChecked="{Binding DcCoupled, Converter={StaticResource ValueEquals}, ConverterParameter={StaticResource True}}" />
+                                        </UniformGrid>
+
+                                        <TextBlock Grid.Row="5" Text="Offset" Style="{StaticResource RowLabel}" />
+                                        <DockPanel Grid.Row="5" Grid.Column="1"
+                                                   ToolTip="Voltage at the screen centre. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division; 0 centres the ground. Or drag the green ground marker on the screen.">
+                                            <RepeatButton DockPanel.Dock="Right" Content="&#xE845;" Command="{Binding ZeroOffsetCommand}" Style="{StaticResource Step}" ToolTip="Zero" />
+                                            <RepeatButton DockPanel.Dock="Right" Content="&#xE710;" Command="{Binding OffsetUpCommand}" Style="{StaticResource Step}" />
+                                            <RepeatButton DockPanel.Dock="Right" Content="&#xE738;" Command="{Binding OffsetDownCommand}" Style="{StaticResource Step}" />
+                                            <TextBox Text="{Binding OffsetText}" Style="{StaticResource Entry}">
+                                                <TextBox.InputBindings>
+                                                    <KeyBinding Key="Up" Command="{Binding OffsetUpCommand}" />
+                                                    <KeyBinding Key="Down" Command="{Binding OffsetDownCommand}" />
+                                                </TextBox.InputBindings>
+                                            </TextBox>
+                                        </DockPanel>
                                     </Grid>
-                                    <TextBlock Text="{Binding RunModeText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+                                </Border>
+
+                                <Border Style="{StaticResource Card}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="6" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.ColumnSpan="2" Text="Horizontal" Style="{StaticResource CardHeader}" />
+
+                                        <TextBlock Grid.Row="1" Text="Rate" Style="{StaticResource RowLabel}" />
+                                        <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" HorizontalAlignment="Stretch"
+                                                  ToolTip="Sample rate, and the time a division shows at 1:1 (50 samples). Ctrl+wheel on the screen zooms the view without changing it.">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate DataType="core:TimeBase">
+                                                    <TextBlock>
+                                                        <Run Text="{Binding Converter={StaticResource SampleRateText}, Mode=OneWay}" />
+                                                        <Run Text="{Binding Converter={StaticResource TimeBaseScaleText}, Mode=OneWay}"
+                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" />
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+
+                                        <TextBlock Grid.Row="3" Text="Frame" Style="{StaticResource RowLabel}" />
+                                        <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding FrameSizes}" SelectedItem="{Binding FrameSize}" ItemStringFormat="{}{0} samples"
+                                                  IsEnabled="{Binding HasTrigger}" HorizontalAlignment="Stretch"
+                                                  ToolTip="Samples per frame. 512 fills the screen; larger frames cover more time and are shown whole (zoom in with +), but take longer to capture and send (4096: about 2 s per frame)." />
+                                    </Grid>
+                                </Border>
+
+                                <Border Style="{StaticResource Card}">
+                                    <Grid IsEnabled="{Binding HasTrigger}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="6" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.ColumnSpan="2" Text="Trigger" Style="{StaticResource CardHeader}" />
+
+                                        <TextBlock Grid.Row="1" Text="Edge" Style="{StaticResource RowLabel}" />
+                                        <UniformGrid Grid.Row="1" Grid.Column="1" Rows="1">
+                                            <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="0,0,2,0" ToolTip="Rising edge"
+                                                         IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Rising}}">
+                                                <Path Style="{StaticResource EdgeIcon}" Data="M1,14 H9 V2 H21 M5.5,8.5 L9,5 L12.5,8.5" />
+                                            </RadioButton>
+                                            <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="2,0,2,0" ToolTip="Falling edge"
+                                                         IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Falling}}">
+                                                <Path Style="{StaticResource EdgeIcon}" Data="M1,2 H9 V14 H21 M5.5,7.5 L9,11 L12.5,7.5" />
+                                            </RadioButton>
+                                            <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="2,0,0,0" ToolTip="Either edge"
+                                                         IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Both}}">
+                                                <Path Style="{StaticResource EdgeIcon}" Data="M1,14 H5 V2 H17 V14 H21 M2,8 L5,5 L8,8 M14,8 L17,11 L20,8" />
+                                            </RadioButton>
+                                        </UniformGrid>
+
+                                        <TextBlock Grid.Row="3" Text="Level" Style="{StaticResource RowLabel}" />
+                                        <DockPanel Grid.Row="3" Grid.Column="1"
+                                                   ToolTip="Trigger level in volts. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the orange trigger line on the screen.">
+                                            <RepeatButton DockPanel.Dock="Right" Content="&#xE845;" Command="{Binding ZeroTriggerLevelCommand}" Style="{StaticResource Step}" ToolTip="Zero" />
+                                            <RepeatButton DockPanel.Dock="Right" Content="&#xE710;" Command="{Binding TriggerLevelUpCommand}" Style="{StaticResource Step}" />
+                                            <RepeatButton DockPanel.Dock="Right" Content="&#xE738;" Command="{Binding TriggerLevelDownCommand}" Style="{StaticResource Step}" />
+                                            <TextBox Text="{Binding TriggerLevelText}" Style="{StaticResource Entry}">
+                                                <TextBox.InputBindings>
+                                                    <KeyBinding Key="Up" Command="{Binding TriggerLevelUpCommand}" />
+                                                    <KeyBinding Key="Down" Command="{Binding TriggerLevelDownCommand}" />
+                                                </TextBox.InputBindings>
+                                            </TextBox>
+                                        </DockPanel>
+
+                                        <UniformGrid Grid.Row="5" Grid.ColumnSpan="2" Rows="1">
+                                            <CheckBox Content="Auto" IsChecked="{Binding AutoTrigger}"
+                                                      ToolTip="Auto trigger: keep acquiring when no edge is found" />
+                                            <CheckBox Content="Noise reject" IsChecked="{Binding NoiseReject}"
+                                                      ToolTip="Only applies to a single edge" />
+                                        </UniformGrid>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+
+                <!-- Connection, what the scope reports about itself, and its calibration -->
+                <TabItem Header="Device">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                        <StackPanel Margin="6" MaxWidth="640" HorizontalAlignment="Left">
+                            <StackPanel.Resources>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Margin" Value="0,0,6,0" />
+                                    <Setter Property="MinWidth" Value="110" />
+                                </Style>
+                                <Style x:Key="Value" TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
+                                    <Setter Property="Margin" Value="0,3" />
+                                </Style>
+                            </StackPanel.Resources>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Connection" Style="{StaticResource CardHeader}" />
+                                    <TextBlock Text="{Binding Status}" Style="{StaticResource Value}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Content="Connect..." Command="local:MainWindow.ShowConnection"
+                                                ToolTip="Scan for scopes and connect to one (Ctrl+K, or double-click the status bar)" />
+                                        <Button Content="Disconnect" Command="{Binding DisconnectCommand}" />
+                                    </StackPanel>
+                                    <CheckBox Content="Auto-connect" IsChecked="{Binding AutoConnect}" Margin="0,8,0,0"
+                                              ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" DataContext="{Binding Scope}">
+                                <StackPanel>
+                                    <TextBlock Text="Scope" Style="{StaticResource CardHeader}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="Firmware" Style="{StaticResource RowLabel}" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Firmware}" Style="{StaticResource Value}" />
+                                        <TextBlock Grid.Row="1" Text="Serial" Style="{StaticResource RowLabel}" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" Style="{StaticResource Value}" />
+                                        <TextBlock Grid.Row="2" Text="Power" Style="{StaticResource RowLabel}" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Power}" Style="{StaticResource Value}" />
+                                        <TextBlock Grid.Row="3" Text="Battery" Style="{StaticResource RowLabel}" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Battery}" ToolTip="{Binding BatteryLevel}" Style="{StaticResource Value}" />
+                                        <TextBlock Grid.Row="4" Text="Temperature" Style="{StaticResource RowLabel}" />
+                                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Temperature}" Style="{StaticResource Value}" />
+                                    </Grid>
                                 </StackPanel>
                             </Border>
 
                             <Border Style="{StaticResource Card}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="6" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="6" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.ColumnSpan="2" Text="Vertical" Style="{StaticResource CardHeader}" />
-
-                                    <TextBlock Grid.Row="1" Text="Range" Style="{StaticResource RowLabel}" />
-                                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" HorizontalAlignment="Stretch" />
-
-                                    <TextBlock Grid.Row="3" Text="Coupling" Style="{StaticResource RowLabel}" />
-                                    <UniformGrid Grid.Row="3" Grid.Column="1" Rows="1">
-                                        <RadioButton GroupName="Coupling" Content="AC" Style="{StaticResource Segment}" Margin="0,0,2,0"
-                                                     IsChecked="{Binding DcCoupled, Converter={StaticResource ValueEquals}, ConverterParameter={StaticResource False}}" />
-                                        <RadioButton GroupName="Coupling" Content="DC" Style="{StaticResource Segment}" Margin="2,0,0,0"
-                                                     IsChecked="{Binding DcCoupled, Converter={StaticResource ValueEquals}, ConverterParameter={StaticResource True}}" />
-                                    </UniformGrid>
-
-                                    <TextBlock Grid.Row="5" Text="Offset" Style="{StaticResource RowLabel}" />
-                                    <DockPanel Grid.Row="5" Grid.Column="1"
-                                               ToolTip="Voltage at the screen centre. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division; 0 centres the ground. Or drag the green ground marker on the screen.">
-                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE845;" Command="{Binding ZeroOffsetCommand}" Style="{StaticResource Step}" ToolTip="Zero" />
-                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE710;" Command="{Binding OffsetUpCommand}" Style="{StaticResource Step}" />
-                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE738;" Command="{Binding OffsetDownCommand}" Style="{StaticResource Step}" />
-                                        <TextBox Text="{Binding OffsetText}" Style="{StaticResource Entry}">
-                                            <TextBox.InputBindings>
-                                                <KeyBinding Key="Up" Command="{Binding OffsetUpCommand}" />
-                                                <KeyBinding Key="Down" Command="{Binding OffsetDownCommand}" />
-                                            </TextBox.InputBindings>
-                                        </TextBox>
-                                    </DockPanel>
-                                </Grid>
+                                <StackPanel>
+                                    <TextBlock Text="Calibration" Style="{StaticResource CardHeader}" />
+                                    <TextBlock Text="{Binding Scope.Calibration}" Style="{StaticResource Value}" />
+                                    <TextBlock Text="Measures and stores the zero offset of every range. Clip the probe tip to its ground lead first."
+                                               Style="{StaticResource Value}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Content="Calibrate..." Command="local:MainWindow.Calibrate" />
+                                        <Button Content="Clear..." Command="local:MainWindow.ClearCalibration"
+                                                ToolTip="Forget the stored calibration, also the app's copy" />
+                                    </StackPanel>
+                                </StackPanel>
                             </Border>
 
                             <Border Style="{StaticResource Card}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="6" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.ColumnSpan="2" Text="Horizontal" Style="{StaticResource CardHeader}" />
-
-                                    <TextBlock Grid.Row="1" Text="Rate" Style="{StaticResource RowLabel}" />
-                                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding TimeBases}" SelectedItem="{Binding TimeBase}" HorizontalAlignment="Stretch"
-                                              ToolTip="Sample rate, and the time a division shows at 1:1 (50 samples). Ctrl+wheel on the screen zooms the view without changing it.">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate DataType="core:TimeBase">
-                                                <TextBlock>
-                                                    <Run Text="{Binding Converter={StaticResource SampleRateText}, Mode=OneWay}" />
-                                                    <Run Text="{Binding Converter={StaticResource TimeBaseScaleText}, Mode=OneWay}"
-                                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" />
-                                                </TextBlock>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-
-                                    <TextBlock Grid.Row="3" Text="Frame" Style="{StaticResource RowLabel}" />
-                                    <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding FrameSizes}" SelectedItem="{Binding FrameSize}" ItemStringFormat="{}{0} samples"
-                                              IsEnabled="{Binding HasTrigger}" HorizontalAlignment="Stretch"
-                                              ToolTip="Samples per frame. 512 fills the screen; larger frames cover more time and are shown whole (zoom in with +), but take longer to capture and send (4096: about 2 s per frame)." />
-                                </Grid>
-                            </Border>
-
-                            <Border Style="{StaticResource Card}">
-                                <Grid IsEnabled="{Binding HasTrigger}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" SharedSizeGroup="RowLabel" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="6" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="8" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.ColumnSpan="2" Text="Trigger" Style="{StaticResource CardHeader}" />
-
-                                    <TextBlock Grid.Row="1" Text="Edge" Style="{StaticResource RowLabel}" />
-                                    <UniformGrid Grid.Row="1" Grid.Column="1" Rows="1">
-                                        <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="0,0,2,0" ToolTip="Rising edge"
-                                                     IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Rising}}">
-                                            <Path Style="{StaticResource EdgeIcon}" Data="M1,14 H9 V2 H21 M5.5,8.5 L9,5 L12.5,8.5" />
-                                        </RadioButton>
-                                        <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="2,0,2,0" ToolTip="Falling edge"
-                                                     IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Falling}}">
-                                            <Path Style="{StaticResource EdgeIcon}" Data="M1,2 H9 V14 H21 M5.5,7.5 L9,11 L12.5,7.5" />
-                                        </RadioButton>
-                                        <RadioButton GroupName="Edge" Style="{StaticResource Segment}" Margin="2,0,0,0" ToolTip="Either edge"
-                                                     IsChecked="{Binding TriggerEdge, Converter={StaticResource ValueEquals}, ConverterParameter={x:Static core:TriggerEdge.Both}}">
-                                            <Path Style="{StaticResource EdgeIcon}" Data="M1,14 H5 V2 H17 V14 H21 M2,8 L5,5 L8,8 M14,8 L17,11 L20,8" />
-                                        </RadioButton>
-                                    </UniformGrid>
-
-                                    <TextBlock Grid.Row="3" Text="Level" Style="{StaticResource RowLabel}" />
-                                    <DockPanel Grid.Row="3" Grid.Column="1"
-                                               ToolTip="Trigger level in volts. Type a value (e.g. 1.2, -500 mV) and press Enter; Up/Down or −/+ step a tenth of a division. Or drag the orange trigger line on the screen.">
-                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE845;" Command="{Binding ZeroTriggerLevelCommand}" Style="{StaticResource Step}" ToolTip="Zero" />
-                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE710;" Command="{Binding TriggerLevelUpCommand}" Style="{StaticResource Step}" />
-                                        <RepeatButton DockPanel.Dock="Right" Content="&#xE738;" Command="{Binding TriggerLevelDownCommand}" Style="{StaticResource Step}" />
-                                        <TextBox Text="{Binding TriggerLevelText}" Style="{StaticResource Entry}">
-                                            <TextBox.InputBindings>
-                                                <KeyBinding Key="Up" Command="{Binding TriggerLevelUpCommand}" />
-                                                <KeyBinding Key="Down" Command="{Binding TriggerLevelDownCommand}" />
-                                            </TextBox.InputBindings>
-                                        </TextBox>
-                                    </DockPanel>
-
-                                    <UniformGrid Grid.Row="5" Grid.ColumnSpan="2" Rows="1">
-                                        <CheckBox Content="Auto" IsChecked="{Binding AutoTrigger}"
-                                                  ToolTip="Auto trigger: keep acquiring when no edge is found" />
-                                        <CheckBox Content="Noise reject" IsChecked="{Binding NoiseReject}"
-                                                  ToolTip="Only applies to a single edge" />
-                                    </UniformGrid>
-                                </Grid>
+                                <StackPanel>
+                                    <TextBlock Text="Power" Style="{StaticResource CardHeader}" />
+                                    <TextBlock Text="The scope never turns itself off. Deep sleep turns it off until its button is pressed or a charger is plugged in."
+                                               Style="{StaticResource Value}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Content="Sleep..." Command="local:MainWindow.Sleep"
+                                                ToolTip="Deep sleep now; with auto-connect on, the app reconnects when you wake it" />
+                                    </StackPanel>
+                                    <CheckBox Content="Put the scope to sleep when disconnecting" IsChecked="{Binding SleepOnDisconnect}" Margin="0,8,0,0"
+                                              ToolTip="Also when closing the app. Press the scope's button to wake it." />
+                                    <CheckBox Content="Turn the FPGA off after 5 minutes stopped" IsChecked="{Binding IdlePowerOff}" Margin="0,4,0,0"
+                                              ToolTip="Stays connected; Run then takes about 1.5 s longer to start." />
+                                </StackPanel>
                             </Border>
                         </StackPanel>
                     </ScrollViewer>
-                </Grid>
-            </TabItem>
+                </TabItem>
 
-            <!-- Connection, what the scope reports about itself, and its calibration -->
-            <TabItem Header="Device">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-                    <StackPanel Margin="6" MaxWidth="640" HorizontalAlignment="Left">
-                        <StackPanel.Resources>
-                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                <Setter Property="Margin" Value="0,0,6,0" />
-                                <Setter Property="MinWidth" Value="110" />
-                            </Style>
-                            <Style x:Key="Value" TargetType="TextBlock">
-                                <Setter Property="VerticalAlignment" Value="Center" />
-                                <Setter Property="TextWrapping" Value="Wrap" />
-                                <Setter Property="Margin" Value="0,3" />
-                            </Style>
-                        </StackPanel.Resources>
+                <!-- Protocol diagnostics -->
+                <TabItem Header="Diagnostics">
+                    <Grid Margin="6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <TextBlock Text="Connection" Style="{StaticResource CardHeader}" />
-                                <TextBlock Text="{Binding Status}" Style="{StaticResource Value}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                    <Button Content="Connect..." Command="local:MainWindow.ShowConnection"
-                                            ToolTip="Scan for scopes and connect to one (Ctrl+K, or double-click the status bar)" />
-                                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}" />
-                                </StackPanel>
-                                <CheckBox Content="Auto-connect" IsChecked="{Binding AutoConnect}" Margin="0,8,0,0"
-                                          ToolTip="Connect to the last scope as soon as it is in range, also at start-up" />
-                            </StackPanel>
-                        </Border>
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="Characteristics" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
+                            <ListView ItemsSource="{Binding Characteristics}" MinHeight="60">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Role" Width="110" DisplayMemberBinding="{Binding Role}" />
+                                        <GridViewColumn Header="UUID" Width="300" DisplayMemberBinding="{Binding Uuid}" />
+                                        <GridViewColumn Header="Properties" Width="260" DisplayMemberBinding="{Binding Properties}" />
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </StackPanel>
 
-                        <Border Style="{StaticResource Card}" DataContext="{Binding Scope}">
-                            <StackPanel>
-                                <TextBlock Text="Scope" Style="{StaticResource CardHeader}" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="Firmware" Style="{StaticResource RowLabel}" />
-                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Firmware}" Style="{StaticResource Value}" />
-                                    <TextBlock Grid.Row="1" Text="Serial" Style="{StaticResource RowLabel}" />
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" Style="{StaticResource Value}" />
-                                    <TextBlock Grid.Row="2" Text="Power" Style="{StaticResource RowLabel}" />
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Power}" Style="{StaticResource Value}" />
-                                    <TextBlock Grid.Row="3" Text="Battery" Style="{StaticResource RowLabel}" />
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Battery}" ToolTip="{Binding BatteryLevel}" Style="{StaticResource Value}" />
-                                    <TextBlock Grid.Row="4" Text="Temperature" Style="{StaticResource RowLabel}" />
-                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Temperature}" Style="{StaticResource Value}" />
-                                </Grid>
-                            </StackPanel>
-                        </Border>
+                        <StackPanel Grid.Row="1">
+                            <StackPanel.Resources>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Margin" Value="0,0,6,6" />
+                                </Style>
+                            </StackPanel.Resources>
+                            <TextBlock Text="Raw commands" Style="{StaticResource SectionHeader}" />
+                            <WrapPanel>
+                                <Button Content="Power (QP)" Command="{Binding SendCommandCommand}" CommandParameter="QP" />
+                                <Button Content="Telemetry (QTI)" Command="{Binding SendCommandCommand}" CommandParameter="QTI" />
+                                <Button Content="Version (QVR)" Command="{Binding SendCommandCommand}" CommandParameter="QVR" />
+                                <Button Content="Error log (QE)" Command="{Binding SendCommandCommand}" CommandParameter="QE" />
+                                <Button Content="Calibration (QC)" Command="{Binding SendCommandCommand}" CommandParameter="QC" />
+                            </WrapPanel>
+                            <WrapPanel>
+                                <Button Content="Send settings" Command="{Binding SendSettingsCommand}"
+                                        ToolTip="Write the FPGA registers for the settings on the Scope tab" />
+                                <Button Content="Run (R)" Command="{Binding SendCommandCommand}" CommandParameter="R" />
+                                <Button Content="Single (F)" Command="{Binding SendCommandCommand}" CommandParameter="F" />
+                                <Button Content="Stop (S)" Command="{Binding SendCommandCommand}" CommandParameter="S" />
+                                <Button Content="Cancel (X)" Command="{Binding SendCommandCommand}" CommandParameter="X" />
+                                <Button Content="Full frame (L)" Command="{Binding SendCommandCommand}" CommandParameter="L" />
+                            </WrapPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCustomCommandCommand}" Margin="6,0,0,0" />
+                                <TextBox Text="{Binding CustomCommand, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                                         VerticalContentAlignment="Center" ToolTip="Any ASCII command for Scope In, e.g. QTI" />
+                            </DockPanel>
+                            <CheckBox Content="Log raw data packets" IsChecked="{Binding LogDataPackets}" Margin="0,6,0,0" />
+                        </StackPanel>
 
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <TextBlock Text="Calibration" Style="{StaticResource CardHeader}" />
-                                <TextBlock Text="{Binding Scope.Calibration}" Style="{StaticResource Value}" />
-                                <TextBlock Text="Measures and stores the zero offset of every range. Clip the probe tip to its ground lead first."
-                                           Style="{StaticResource Value}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                    <Button Content="Calibrate..." Command="local:MainWindow.Calibrate" />
-                                    <Button Content="Clear..." Command="local:MainWindow.ClearCalibration"
-                                            ToolTip="Forget the stored calibration, also the app's copy" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <TextBlock Text="Power" Style="{StaticResource CardHeader}" />
-                                <TextBlock Text="The scope never turns itself off. Deep sleep turns it off until its button is pressed or a charger is plugged in."
-                                           Style="{StaticResource Value}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                    <Button Content="Sleep..." Command="local:MainWindow.Sleep"
-                                            ToolTip="Deep sleep now; with auto-connect on, the app reconnects when you wake it" />
-                                </StackPanel>
-                                <CheckBox Content="Put the scope to sleep when disconnecting" IsChecked="{Binding SleepOnDisconnect}" Margin="0,8,0,0"
-                                          ToolTip="Also when closing the app. Press the scope's button to wake it." />
-                                <CheckBox Content="Turn the FPGA off after 5 minutes stopped" IsChecked="{Binding IdlePowerOff}" Margin="0,4,0,0"
-                                          ToolTip="Stays connected; Run then takes about 1.5 s longer to start." />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- Protocol diagnostics -->
-            <TabItem Header="Diagnostics">
-                <Grid Margin="6">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <StackPanel Grid.Row="0">
-                        <TextBlock Text="Characteristics" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
-                        <ListView ItemsSource="{Binding Characteristics}" MinHeight="60">
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn Header="Role" Width="110" DisplayMemberBinding="{Binding Role}" />
-                                    <GridViewColumn Header="UUID" Width="300" DisplayMemberBinding="{Binding Uuid}" />
-                                    <GridViewColumn Header="Properties" Width="260" DisplayMemberBinding="{Binding Properties}" />
-                                </GridView>
-                            </ListView.View>
-                        </ListView>
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="1">
-                        <StackPanel.Resources>
-                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                <Setter Property="Margin" Value="0,0,6,6" />
-                            </Style>
-                        </StackPanel.Resources>
-                        <TextBlock Text="Raw commands" Style="{StaticResource SectionHeader}" />
-                        <WrapPanel>
-                            <Button Content="Power (QP)" Command="{Binding SendCommandCommand}" CommandParameter="QP" />
-                            <Button Content="Telemetry (QTI)" Command="{Binding SendCommandCommand}" CommandParameter="QTI" />
-                            <Button Content="Version (QVR)" Command="{Binding SendCommandCommand}" CommandParameter="QVR" />
-                            <Button Content="Error log (QE)" Command="{Binding SendCommandCommand}" CommandParameter="QE" />
-                            <Button Content="Calibration (QC)" Command="{Binding SendCommandCommand}" CommandParameter="QC" />
-                        </WrapPanel>
-                        <WrapPanel>
-                            <Button Content="Send settings" Command="{Binding SendSettingsCommand}"
-                                    ToolTip="Write the FPGA registers for the settings on the Scope tab" />
-                            <Button Content="Run (R)" Command="{Binding SendCommandCommand}" CommandParameter="R" />
-                            <Button Content="Single (F)" Command="{Binding SendCommandCommand}" CommandParameter="F" />
-                            <Button Content="Stop (S)" Command="{Binding SendCommandCommand}" CommandParameter="S" />
-                            <Button Content="Cancel (X)" Command="{Binding SendCommandCommand}" CommandParameter="X" />
-                            <Button Content="Full frame (L)" Command="{Binding SendCommandCommand}" CommandParameter="L" />
-                        </WrapPanel>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCustomCommandCommand}" Margin="6,0,0,0" />
-                            <TextBox Text="{Binding CustomCommand, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
-                                     VerticalContentAlignment="Center" ToolTip="Any ASCII command for Scope In, e.g. QTI" />
+                        <DockPanel Grid.Row="2">
+                            <DockPanel DockPanel.Dock="Top" Margin="0,12,0,4">
+                                <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearLogCommand}" Margin="0" Padding="10,4" />
+                                <TextBlock Text="Log" FontWeight="SemiBold" />
+                            </DockPanel>
+                            <ListBox x:Name="LogList" ItemsSource="{Binding Log}" FontFamily="Consolas"
+                                     VirtualizingPanel.IsVirtualizing="True">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="vm:LogEntry">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding TimeText}" Foreground="Gray" Width="100" />
+                                            <TextBlock Text="{Binding KindText}" Width="60" />
+                                            <TextBlock Text="{Binding Text}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
-                        <CheckBox Content="Log raw data packets" IsChecked="{Binding LogDataPackets}" Margin="0,6,0,0" />
-                    </StackPanel>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </DockPanel>
 
-                    <DockPanel Grid.Row="2">
-                        <DockPanel DockPanel.Dock="Top" Margin="0,12,0,4">
-                            <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding ClearLogCommand}" Margin="0" Padding="10,4" />
-                            <TextBlock Text="Log" FontWeight="SemiBold" />
-                        </DockPanel>
-                        <ListBox x:Name="LogList" ItemsSource="{Binding Log}" FontFamily="Consolas"
-                                 VirtualizingPanel.IsVirtualizing="True">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="vm:LogEntry">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding TimeText}" Foreground="Gray" Width="100" />
-                                        <TextBlock Text="{Binding KindText}" Width="60" />
-                                        <TextBlock Text="{Binding Text}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </DockPanel>
-                </Grid>
-            </TabItem>
-        </TabControl>
-    </DockPanel>
+        <!-- While closing puts the scope to sleep (up to a second) -->
+        <Grid Visibility="{Binding IsClosing, Converter={StaticResource Visible}}" Background="#80000000">
+            <Border Style="{StaticResource Card}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24,16">
+                <StackPanel Width="260">
+                    <TextBlock Text="Putting the scope to sleep..." Style="{StaticResource CardHeader}" />
+                    <ProgressBar IsIndeterminate="True" Height="4" />
+                    <TextBlock Text="The app closes once the scope has the command." Margin="0,8,0,0"
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
 </Window>

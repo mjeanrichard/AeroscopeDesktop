@@ -20,6 +20,7 @@ AEROSCOPE_ADDRESS=C6:A7:C8:D1:1A:B1 dotnet test          # also runs against the
 dotnet run --project src/Aeroscope.Probe -- scan
 dotnet run --project src/Aeroscope.Probe -- session --out cap.txt QP until:PF settings R frames:5 S X
 dotnet run --project src/Aeroscope.Probe -- decode cap.txt --plot
+dotnet publish src/Aeroscope.App -p:PublishProfile=SelfContained  # publish/Aeroscope.App.exe, runs without .NET
 ```
 
 The scope is in range of this PC's Bluetooth adapter. It accepts one connection at a time, so close the WPF app before using the probe or hardware tests.

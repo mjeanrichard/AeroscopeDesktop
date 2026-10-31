@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel = new();
     private readonly DispatcherTimer _progressTimer;
     private bool _scrollPending;
+    private bool _sleepingBeforeClose;
 
     public MainWindow()
     {
@@ -169,8 +170,29 @@ public partial class MainWindow : Window
     /// <summary>Selects the whole value on entering a number box, so typing replaces it.</summary>
     private void OnEntryFocused(object sender, KeyboardFocusChangedEventArgs e) => ((TextBox)sender).SelectAll();
 
-    protected override void OnClosing(CancelEventArgs e)
+    /// <summary>
+    /// Putting the scope to sleep takes up to a second, so the window stays open meanwhile and says so,
+    /// then closes for real.
+    /// </summary>
+    protected override async void OnClosing(CancelEventArgs e)
     {
+        if (_sleepingBeforeClose)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        if (_viewModel.SleepsOnClose)
+        {
+            e.Cancel = true;
+            _sleepingBeforeClose = true;
+            _progressTimer.Stop();
+            await _viewModel.SleepBeforeCloseAsync();
+            _sleepingBeforeClose = false;
+            Close(); // now disconnected, so this closes
+            return;
+        }
+
         _progressTimer.Stop();
         _viewModel.Dispose();
         base.OnClosing(e);

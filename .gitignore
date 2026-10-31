@@ -31,3 +31,6 @@ _ReSharper*/
 .idea/
 #Nuget packages folder
 packages/
+
+# Output of dotnet publish -p:PublishProfile=SelfContained
+publish/

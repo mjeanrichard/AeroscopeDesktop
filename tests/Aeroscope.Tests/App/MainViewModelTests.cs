@@ -811,6 +811,25 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public async Task Closing_the_app_puts_the_scope_to_sleep_without_blocking()
+    {
+        await ConnectToScopeAsync();
+        Assert.False(_viewModel.SleepsOnClose);
+        _viewModel.SleepOnDisconnect = true;
+        Assert.True(_viewModel.SleepsOnClose);
+
+        await _viewModel.SleepBeforeCloseAsync();
+
+        Assert.True(_viewModel.IsClosing);
+        Assert.Equal(SleepPacket, Assert.Single(_link.Writes).Packet);
+        Assert.True(_link.IsDisposed);
+        Assert.False(_viewModel.SleepsOnClose); // so the window then closes
+
+        _viewModel.Dispose();
+        Assert.Single(_link.Writes); // not sent twice
+    }
+
+    [Fact]
     public async Task Closing_the_app_sends_zz_only_with_the_option()
     {
         await ConnectToScopeAsync();

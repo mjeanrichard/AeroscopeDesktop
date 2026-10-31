@@ -633,6 +633,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Set when closing the app puts the scope to sleep first; the window shows it until it closes.</summary>
+    [ObservableProperty]
+    public partial bool IsClosing { get; private set; }
+
+    /// <summary>Whether closing the app first puts the scope to sleep (<see cref="SleepOnDisconnect"/>), which takes up to a second.</summary>
+    public bool SleepsOnClose => SleepOnDisconnect && State == ConnectionState.Connected && _connection is not null;
+
+    /// <summary>Puts the scope to sleep before the app closes, without blocking the window so it can show <see cref="IsClosing"/>.</summary>
+    public async Task SleepBeforeCloseAsync()
+    {
+        IsClosing = true;
+        await SendSleepAsync();
+        CloseConnection(AsleepStatus);
+    }
+
     public void Dispose()
     {
         _scanner.Dispose();

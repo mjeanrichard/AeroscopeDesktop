@@ -31,4 +31,9 @@
     <None Include="Captures\*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The release workflow's version script -->
+  <ItemGroup>
+    <None Include="..\..\.github\scripts\next-version.ps1" Link="Scripts\next-version.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

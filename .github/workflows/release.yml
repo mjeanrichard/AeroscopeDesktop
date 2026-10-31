@@ -1,0 +1,68 @@
+# Builds and tests every push to master. When the commits since the last release include a feat, fix,
+# perf or breaking change (see scripts/next-version.ps1), publishes the self-contained exe, tags the
+# commit vX.Y.Z and creates a GitHub release with it.
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history and tags, to find the last release
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Next version
+        id: version
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP notes.md
+          $version = ./.github/scripts/next-version.ps1 -NotesFile $notes
+          "version=$version" >> $env:GITHUB_OUTPUT
+          if ($version) {
+            "Releasing v$version" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content $notes >> $env:GITHUB_STEP_SUMMARY
+          }
+          else {
+            "No feat, fix or breaking commits since the last release; nothing to release." >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Test
+        run: dotnet test # hardware tests skip without AEROSCOPE_ADDRESS
+
+      - name: Publish
+        if: steps.version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          dotnet publish src/Aeroscope.App -p:PublishProfile=SelfContained -p:Version=$env:VERSION
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Copy-Item publish/Aeroscope.App.exe "Aeroscope-$env:VERSION.exe"
+
+      - name: Release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$env:VERSION" "Aeroscope-$env:VERSION.exe" `
+            --target $env:GITHUB_SHA `
+            --title "Aeroscope $env:VERSION" `
+            --notes-file (Join-Path $env:RUNNER_TEMP notes.md)

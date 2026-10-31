@@ -81,6 +81,10 @@
             </Setter>
         </Style>
         <Style x:Key="WideScrollBar" TargetType="ScrollBar">
+            <Style.Resources>
+                <!-- The track shrinks the thumb down to half this width, ignoring its MinWidth (which then clips it) -->
+                <sys:Double x:Key="{x:Static SystemParameters.HorizontalScrollBarButtonWidthKey}">48</sys:Double>
+            </Style.Resources>
             <Setter Property="Orientation" Value="Horizontal" />
             <Setter Property="Height" Value="14" />
             <Setter Property="Template">

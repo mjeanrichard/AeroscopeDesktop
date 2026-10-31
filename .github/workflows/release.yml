@@ -1,11 +1,9 @@
-# Builds and tests every push to master. When the commits since the last release include a feat, fix,
-# perf or breaking change (see scripts/next-version.ps1), publishes the self-contained exe, tags the
-# commit vX.Y.Z and creates a GitHub release with it.
+# Run by hand (Actions > Release > Run workflow). Builds and tests the chosen branch; when the commits since
+# the last release include a feat, fix, perf or breaking change (see scripts/next-version.ps1), publishes
+# the self-contained exe, tags the commit vX.Y.Z and creates a GitHub release with it.
 name: Release
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:

@@ -427,6 +427,56 @@ public class WaveformViewTests
     }
 
     [Fact]
+    public void Only_the_samples_on_screen_are_drawn()
+    {
+        // A 4096-sample frame at 1:1: one pixel a sample, 500 of them on screen.
+        var map = new ScreenMapping(500, 400, 1, 500e-9, 0);
+        var waveform = new Waveform(Enumerable.Range(0, 4096).Select(i => Math.Sin(i / 30.0)).ToArray(), 10e-9, -20.48e-6);
+
+        var points = WaveformView.TracePoints(map, waveform);
+
+        Assert.Equal(501, points.Count); // both edges fall on a sample here
+        Assert.True(points[0].X <= 0 && points[^1].X >= 500);
+    }
+
+    [Fact]
+    public void Dense_samples_keep_each_columns_extremes()
+    {
+        // The same frame zoomed out to 5 µs/div: about 10 samples to a pixel column.
+        var map = new ScreenMapping(500, 400, 1, 5e-6, 0);
+        var volts = Enumerable.Range(0, 4096).Select(i => Math.Sin(i / 30.0)).ToArray();
+        volts[2000] = 3.5; // a one-sample spike
+        var waveform = new Waveform(volts, 10e-9, -20.48e-6);
+
+        var points = WaveformView.TracePoints(map, waveform);
+
+        Assert.InRange(points.Count, 400, 4 * 420); // at most 4 a column, not 4096
+        Assert.Contains(points, p => Math.Abs(p.Y - map.Y(3.5)) < 1e-9);
+        Assert.Equal(map.Y(volts.Min()), points.Max(p => p.Y), 9);
+        Assert.True(points.Zip(points.Skip(1)).All(pair => pair.First.X <= pair.Second.X)); // in time order
+    }
+
+    [Fact]
+    public void Moving_the_trigger_level_or_cursor_keeps_the_drawn_trace()
+    {
+        WithView(view =>
+        {
+            view.Traces = [new Waveform(Enumerable.Repeat(2.0, 4096).ToArray(), 10e-9, -20.48e-6)];
+            view.UpdateLayout();
+            var drawn = view.TraceDrawCount;
+
+            view.TriggerLevelVolts = 1.5;
+            view.CursorSeconds = 1e-6;
+            view.UpdateLayout();
+            Assert.Equal(drawn, view.TraceDrawCount);
+
+            view.CentreVolts = 1; // the trace moves: drawn again
+            view.UpdateLayout();
+            Assert.Equal(drawn + 1, view.TraceDrawCount);
+        });
+    }
+
+    [Fact]
     public void Dragging_the_trigger_line_sets_the_level_where_it_is_dropped()
     {
         WithView(view =>

@@ -13,6 +13,11 @@ namespace Aeroscope.App.Controls;
 /// The ground marker (the offset) and the trigger level can be dragged with the mouse. Clicking
 /// anywhere else places a cursor: a vertical line on the nearest measured sample, labelled with
 /// its time and voltage; dragging moves it and a right-click removes it.
+///
+/// Drawn in layers so that dragging a marker or the cursor doesn't redraw the trace: the grid
+/// (redrawn when the size changes), the trigger levels, the trace (redrawn when the data, scale,
+/// centre or size change) and on top the cursor and markers. The trace holds only the samples
+/// on screen, and at most a minimum and maximum per pixel column where they are denser.
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
@@ -40,6 +45,30 @@ public sealed class WaveformView : FrameworkElement
     private const double DragStep = 1.0 / 50;
 
     private DragHandle _dragging;
+
+    private readonly DrawingVisual _gridLayer = new();
+    private readonly DrawingVisual _levelLayer = new();
+    private readonly DrawingVisual _traceLayer = new();
+    private readonly DrawingVisual _overlayLayer = new();
+    private Size _gridSize;
+    private (IReadOnlyList<Waveform>? Traces, ScreenMapping Map) _traceDrawn;
+
+    public WaveformView()
+    {
+        foreach (var layer in Layers)
+        {
+            AddVisualChild(layer);
+        }
+    }
+
+    private DrawingVisual[] Layers => [_gridLayer, _levelLayer, _traceLayer, _overlayLayer];
+
+    /// <summary>How often the trace layer has been drawn; moving a marker or the cursor must not add to it.</summary>
+    public int TraceDrawCount { get; private set; }
+
+    protected override int VisualChildrenCount => 4;
+
+    protected override Visual GetVisualChild(int index) => Layers[index];
 
     private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(0x11, 0x14, 0x18)));
     private static readonly Pen GridPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x2B, 0x31, 0x38))), 1));
@@ -228,43 +257,74 @@ public sealed class WaveformView : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         var bounds = new Rect(RenderSize);
-        dc.DrawRectangle(Background, null, bounds);
+        dc.DrawRectangle(Background, null, bounds); // also makes the whole screen take the mouse
         if (bounds.Width < 1 || bounds.Height < 1)
         {
+            foreach (var layer in Layers)
+            {
+                layer.RenderOpen().Close();
+            }
+
+            _gridSize = default;
+            _traceDrawn = default;
             return;
         }
 
         var map = new ScreenMapping(bounds.Width, bounds.Height, VoltsPerDivision, SecondsPerDivision, CentreVolts, CentreSeconds);
-        dc.PushClip(new RectangleGeometry(bounds));
+        var clip = new RectangleGeometry(bounds);
+        clip.Freeze();
 
-        DrawGrid(dc, map);
-        if (ShowTrigger)
+        if (_gridSize != bounds.Size)
         {
-            if (FrameTriggerLevelVolts is { } frameLevel)
+            _gridSize = bounds.Size;
+            using var grid = _gridLayer.RenderOpen();
+            DrawGrid(grid, map);
+        }
+
+        using (var levels = _levelLayer.RenderOpen())
+        {
+            levels.PushClip(clip);
+            if (ShowTrigger)
             {
-                DrawTriggerLevel(dc, map, frameLevel, FrameTriggerLevelPen, FrameTriggerBrush);
+                if (FrameTriggerLevelVolts is { } frameLevel)
+                {
+                    DrawTriggerLevel(levels, map, frameLevel, FrameTriggerLevelPen, FrameTriggerBrush);
+                }
+
+                DrawTriggerLevel(levels, map, TriggerLevelVolts, TriggerLevelPen, TriggerBrush); // the current level on top
             }
 
-            DrawTriggerLevel(dc, map, TriggerLevelVolts, TriggerLevelPen, TriggerBrush); // the current level on top
+            levels.Pop();
         }
 
-        foreach (var waveform in Traces ?? [])
+        if (!ReferenceEquals(_traceDrawn.Traces, Traces) || _traceDrawn.Map != map)
         {
-            DrawTrace(dc, map, waveform);
+            _traceDrawn = (Traces, map);
+            TraceDrawCount++;
+            using var trace = _traceLayer.RenderOpen();
+            trace.PushClip(clip);
+            foreach (var waveform in Traces ?? [])
+            {
+                DrawTrace(trace, map, waveform);
+            }
+
+            trace.Pop();
         }
 
+        using var overlay = _overlayLayer.RenderOpen();
+        overlay.PushClip(clip);
         if (CursorSeconds is { } cursor)
         {
-            DrawCursor(dc, map, cursor);
+            DrawCursor(overlay, map, cursor);
         }
 
-        DrawGroundMarker(dc, map);
+        DrawGroundMarker(overlay, map);
         if (ShowTrigger)
         {
-            DrawTriggerTimeMarker(dc, map);
+            DrawTriggerTimeMarker(overlay, map);
         }
 
-        dc.Pop();
+        overlay.Pop();
     }
 
     /// <summary>The cursor line on the nearest sample, a ring on the trace there, and the label at the top beside the line.</summary>
@@ -325,21 +385,17 @@ public sealed class WaveformView : FrameworkElement
 
     private static void DrawTrace(DrawingContext dc, ScreenMapping map, Waveform waveform)
     {
+        var points = TracePoints(map, waveform);
+        if (points.Count == 0)
+        {
+            return;
+        }
+
         var geometry = new StreamGeometry();
         using (var context = geometry.Open())
         {
-            for (var i = 0; i < waveform.Volts.Length; i++)
-            {
-                var point = new Point(map.X(waveform.TimeOf(i)), map.Y(waveform.Volts[i]));
-                if (i == 0)
-                {
-                    context.BeginFigure(point, isFilled: false, isClosed: false);
-                }
-                else
-                {
-                    context.LineTo(point, isStroked: true, isSmoothJoin: true);
-                }
-            }
+            context.BeginFigure(points[0], isFilled: false, isClosed: false);
+            context.PolyLineTo(points.Skip(1).ToList(), isStroked: true, isSmoothJoin: true);
         }
 
         geometry.Freeze();
@@ -347,15 +403,63 @@ public sealed class WaveformView : FrameworkElement
 
         if (ShowsSampleDots(map, waveform))
         {
-            for (var i = 0; i < waveform.Volts.Length; i++)
+            foreach (var point in points)
             {
-                var x = map.X(waveform.TimeOf(i));
-                if (x >= -SampleDotRadius && x <= map.Width + SampleDotRadius)
-                {
-                    dc.DrawEllipse(TracePen.Brush, null, new Point(x, map.Y(waveform.Volts[i])), SampleDotRadius, SampleDotRadius);
-                }
+                dc.DrawEllipse(TracePen.Brush, null, point, SampleDotRadius, SampleDotRadius);
             }
         }
+    }
+
+    /// <summary>
+    /// The points to draw for a waveform: its samples on screen plus one beyond each edge, so the
+    /// line runs to the edge. Where a pixel column holds more than two samples, only the first and
+    /// last of them and their minimum and maximum are kept (in time order), so drawing stays fast and spikes stay visible.
+    /// </summary>
+    public static List<Point> TracePoints(ScreenMapping map, Waveform waveform)
+    {
+        var points = new List<Point>();
+        var count = waveform.Volts.Length;
+        var first = Math.Max(0, (int)Math.Floor((map.SecondsAt(0) - waveform.FirstSampleTime) / waveform.SampleInterval));
+        var last = Math.Min(count - 1, (int)Math.Ceiling((map.SecondsAt(map.Width) - waveform.FirstSampleTime) / waveform.SampleInterval));
+        if (first > last)
+        {
+            return points;
+        }
+
+        var pixelsPerSample = waveform.SampleInterval / map.SecondsPerDivision * map.DivisionWidth;
+        if (pixelsPerSample >= 0.5)
+        {
+            for (var i = first; i <= last; i++)
+            {
+                points.Add(new Point(map.X(waveform.TimeOf(i)), map.Y(waveform.Volts[i])));
+            }
+
+            return points;
+        }
+
+        var i0 = first;
+        while (i0 <= last)
+        {
+            // One pixel column: the samples whose x rounds down to the same pixel.
+            var column = Math.Floor(map.X(waveform.TimeOf(i0)));
+            var i1 = i0;
+            int low = i0, high = i0;
+            while (i1 + 1 <= last && Math.Floor(map.X(waveform.TimeOf(i1 + 1))) == column)
+            {
+                i1++;
+                if (waveform.Volts[i1] < waveform.Volts[low]) low = i1;
+                if (waveform.Volts[i1] > waveform.Volts[high]) high = i1;
+            }
+
+            foreach (var i in new SortedSet<int> { i0, low, high, i1 })
+            {
+                points.Add(new Point(map.X(waveform.TimeOf(i)), map.Y(waveform.Volts[i])));
+            }
+
+            i0 = i1 + 1;
+        }
+
+        return points;
     }
 
     /// <summary>Zoomed in so far that the samples are drawn as dots, so the lines between them don't pass for data.</summary>

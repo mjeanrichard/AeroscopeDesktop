@@ -267,17 +267,18 @@ public partial class AcquisitionViewModel
         RefreshScreen();
     }
 
-    /// <param name="viewChanged">The time base or frame size changed: back to the whole of the newest data.</param>
+    /// <param name="viewChanged">The time base or frame size changed: back to 1:1 on the newest data.</param>
     private void OnSettingsChanged(bool viewChanged)
     {
+        // Other settings don't change what is shown (recorded frames keep their own settings),
+        // so the screen stays as it is: dragging the trigger level must not redraw the trace.
         if (viewChanged)
         {
             _viewSecondsPerDivision = TimeBase.SecondsPerDivision;
             _framePan = 0;
             IsLive = true;
+            RefreshScreen();
         }
-
-        RefreshScreen();
     }
 
     private void RefreshScreen()

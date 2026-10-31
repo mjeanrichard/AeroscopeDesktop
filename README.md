@@ -62,3 +62,5 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 | `fix:` or `perf:` | patch |
 
 It then tags the commit `vX.Y.Z` and publishes the exe as a GitHub release. Any other commit types don't produce a release.
+
+Each exe comes with a signed build provenance attestation; see [SECURITY.md](SECURITY.md) for how to verify a download, and how to report a vulnerability.

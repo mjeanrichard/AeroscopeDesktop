@@ -1,0 +1,23 @@
+# Turns on auto-merge (squash) for Dependabot's pull requests. GitHub then merges them once the required
+# "build" check from the CI workflow passes, and leaves them open if it fails.
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  automerge:
+    # The event's actor, not only the author, so a push by someone else to a Dependabot branch doesn't qualify.
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

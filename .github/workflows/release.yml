@@ -1,42 +1,52 @@
 # Run by hand (Actions > Release > Run workflow). Builds and tests the chosen branch; when the commits since
 # the last release include a feat, fix, perf or breaking change (see scripts/next-version.ps1), publishes
-# the self-contained exe, tags the commit vX.Y.Z and creates a GitHub release with it.
+# the self-contained exe with a build provenance attestation, tags the commit vX.Y.Z and creates a GitHub
+# release with it. Verify a download with: gh attestation verify Aeroscope-X.Y.Z.exe -R mjeanrichard/AeroscopeDesktop
+#
+# Actions are pinned to commit SHAs (the repository requires it); Dependabot keeps them up to date.
 name: Release
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write # sign the attestation
+      attestations: write
+      artifact-metadata: write
     defaults:
       run:
         shell: pwsh
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the whole history and tags, to find the last release
+          persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
 
       - name: Next version
         id: version
         run: |
-          $notes = Join-Path $env:RUNNER_TEMP notes.md
-          $version = ./.github/scripts/next-version.ps1 -NotesFile $notes
+          New-Item -ItemType Directory -Force release | Out-Null
+          $version = ./.github/scripts/next-version.ps1 -NotesFile release/notes.md
           "version=$version" >> $env:GITHUB_OUTPUT
           if ($version) {
             "Releasing v$version" >> $env:GITHUB_STEP_SUMMARY
-            Get-Content $notes >> $env:GITHUB_STEP_SUMMARY
+            Get-Content release/notes.md >> $env:GITHUB_STEP_SUMMARY
           }
           else {
             "No feat, fix or breaking commits since the last release; nothing to release." >> $env:GITHUB_STEP_SUMMARY
@@ -52,15 +62,41 @@ jobs:
         run: |
           dotnet publish src/Aeroscope.App -p:PublishProfile=SelfContained -p:Version=$env:VERSION
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          Copy-Item publish/Aeroscope.App.exe "Aeroscope-$env:VERSION.exe"
+          Copy-Item publish/Aeroscope.App.exe "release/Aeroscope-$env:VERSION.exe"
+
+      - name: Attest
+        if: steps.version.outputs.version != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/Aeroscope-*.exe
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.version.outputs.version != ''
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  # Separate so that only this job, which runs no repository code, can write to the repository.
+  release:
+    needs: build
+    if: needs.build.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
 
       - name: Release
-        if: steps.version.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          gh release create "v$env:VERSION" "Aeroscope-$env:VERSION.exe" `
-            --target $env:GITHUB_SHA `
-            --title "Aeroscope $env:VERSION" `
-            --notes-file (Join-Path $env:RUNNER_TEMP notes.md)
+          gh release create "v$VERSION" "release/Aeroscope-$VERSION.exe" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Aeroscope $VERSION" \
+            --notes-file release/notes.md

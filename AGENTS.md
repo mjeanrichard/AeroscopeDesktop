@@ -31,7 +31,7 @@ The scope is in range of this PC's Bluetooth adapter. It accepts one connection 
 - Code that needs a live connection goes through `IScopeLink` / `IScopeScanner`, so tests can use the fakes in `Fakes.cs`.
 - BLE events arrive on thread-pool threads. The view model marshals them through its injected `post` action.
 - Projects using `UseWPF` don't get `System.IO` as an implicit using; add it explicitly.
-- Commit messages are conventional (`feat:`, `fix:`, `perf:`, `type!:` or a `BREAKING CHANGE:` footer). The Release workflow (`.github/workflows/release.yml`, run by hand) bumps the version from them (`.github/scripts/next-version.ps1`), tags `vX.Y.Z` and releases the exe; other types don't release.
+- Commit messages are conventional (`feat:`, `fix:`, `perf:`, `type!:` or a `BREAKING CHANGE:` footer). The Release workflow (`.github/workflows/release.yml`, run by hand) bumps the version from them (`.github/scripts/next-version.ps1`), tags `vX.Y.Z` and releases the exe; other types don't release. Pull requests need the CI `build` check (`ci.yml`); Dependabot's merge themselves once it passes. Workflows must pin actions to commit SHAs.
 - Format numbers in logs and capture files with the invariant culture. Tests that check formatted output use `[UseInvariantCulture]`.
 
 ## Protocol facts (verified on firmware rev 5)

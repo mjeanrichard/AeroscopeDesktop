@@ -9,7 +9,7 @@ Target `net10.0-windows10.0.19041.0` everywhere (WinRT Bluetooth API).
 - `src/Aeroscope.App`: WPF app, MVVM with CommunityToolkit.Mvvm (partial-property `[ObservableProperty]`). `MainViewModel` owns the connection and remembers the last scope (`Preferences`, `%LocalAppData%/Aeroscope/preferences.json`) to auto-connect when it advertises; `AcquisitionViewModel` owns settings, run control and what the screen shows; its `History` part keeps everything received while running (`FrameHistory` for triggered frames, stepped through one at a time since they are separate snapshots; `RollHistory` segments of raw codes for roll mode, which scrolls smoothly; both in memory) for scrolling back. Horizontal zoom is display only: the time base sets the sample rate (the scope's fastest is 100 MS/s, i.e. 500 ns/div at 50 samples a division); Ctrl+wheel steps a view scale (1-2-5, from 50 ns/div, 5 samples a division at the fastest rate whatever is selected, up to the whole record) that stays fixed while stepping through the history. `Controls/WaveformView` draws the screen.
 - `src/Aeroscope.Probe`: console tool to drive the scope and record/decode captures. Run without args for usage.
 - `tests/Aeroscope.Tests`: xUnit tests for all projects; fixtures in `Captures/` were recorded from the real scope.
-- `docs/`: reference only. Original Qt/Android app and `AeroscopeProtocol/Aeroscope_BTLE_Protocol_Specification.pdf` (read it with `pdftotext -layout`).
+- `docs/`: reference only, git submodules of Aeroscope Labs' repos (unlicensed, so not copied here; `git submodule update --init`). Original Qt/Android app and `AeroscopeProtocol/Aeroscope_BTLE_Protocol_Specification.pdf` (read it with `pdftotext -layout`).
 
 ## Commands
 

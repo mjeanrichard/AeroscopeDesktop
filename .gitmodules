@@ -1,0 +1,6 @@
+[submodule "docs/Aeroscope-Android"]
+	path = docs/Aeroscope-Android
+	url = https://github.com/aeroscope/Aeroscope-Android.git
+[submodule "docs/AeroscopeProtocol"]
+	path = docs/AeroscopeProtocol
+	url = https://github.com/aeroscope/AeroscopeProtocol.git

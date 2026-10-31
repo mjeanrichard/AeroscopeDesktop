@@ -63,6 +63,7 @@ jobs:
           dotnet publish src/Aeroscope.App -p:PublishProfile=SelfContained -p:Version=$env:VERSION
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Copy-Item publish/Aeroscope.App.exe "release/Aeroscope-$env:VERSION.exe"
+          Copy-Item THIRD-PARTY-NOTICES.txt release/ # the exe bundles .NET and CommunityToolkit.Mvvm
 
       - name: Attest
         if: steps.version.outputs.version != ''
@@ -95,7 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          gh release create "v$VERSION" "release/Aeroscope-$VERSION.exe" \
+          gh release create "v$VERSION" "release/Aeroscope-$VERSION.exe" release/THIRD-PARTY-NOTICES.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Aeroscope $VERSION" \

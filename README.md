@@ -47,7 +47,7 @@ The hardware tests are skipped unless you set `AEROSCOPE_ADDRESS` to your scope'
 | `src/Aeroscope.App` | The WPF app |
 | `src/Aeroscope.Probe` | A console tool to send commands to the scope and record and decode its traffic; run it without arguments for help |
 | `tests/Aeroscope.Tests` | Unit tests, many based on traffic recorded from a real scope |
-| `docs` | The protocol specification and the original Android app, for reference |
+| `docs` | The protocol specification and the original Android app by Aeroscope Labs, for reference: git submodules of [aeroscope/AeroscopeProtocol](https://github.com/aeroscope/AeroscopeProtocol) and [aeroscope/Aeroscope-Android](https://github.com/aeroscope/Aeroscope-Android), fetched with `git submodule update --init` |
 
 [AGENTS.md](AGENTS.md) has more detail on the code and the protocol behaviour verified on the hardware.
 
@@ -64,3 +64,9 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 It then tags the commit `vX.Y.Z` and publishes the exe as a GitHub release. Any other commit types don't produce a release.
 
 Each exe comes with a signed build provenance attestation; see [SECURITY.md](SECURITY.md) for how to verify a download, and how to report a vulnerability.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The released exe also contains the .NET runtime and CommunityToolkit.Mvvm; their notices are in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which comes with each release.
+
+The Aeroscope 100, its protocol specification and the original Android app belong to Aeroscope Labs. This project isn't affiliated with them.

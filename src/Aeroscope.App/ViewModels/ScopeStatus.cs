@@ -49,9 +49,7 @@ public partial class ScopeStatus : ObservableObject
                 Temperature = $"{telemetry.TemperatureCelsius:0.0} °C";
                 break;
             case CalibrationMessage calibration:
-                Calibration = calibration.IsCalibrated
-                    ? "DAC offsets " + string.Join(", ", VoltageRange.All.Zip(calibration.Offsets, (range, offset) => $"{range.Name} {offset}"))
-                    : "Not calibrated";
+                Calibration = calibration.IsCalibrated ? Offsets(calibration.Offsets) : "Not calibrated";
                 break;
             case VersionMessage version:
                 Firmware = $"MCU {version.FirmwareRevision}, FPGA {version.FpgaRevision}, HW {version.HardwareId}";
@@ -67,6 +65,12 @@ public partial class ScopeStatus : ObservableObject
     }
 
     public void CalibrationStarted() => Calibration = "Calibrating...";
+
+    /// <summary>The scope reported no calibration and the app applies the one it remembers.</summary>
+    public void CalibrationRestored(IReadOnlyList<short> offsets) => Calibration = $"Lost by the scope, applied by the app: {Offsets(offsets)}";
+
+    private static string Offsets(IReadOnlyList<short> offsets)
+        => "DAC offsets " + string.Join(", ", VoltageRange.All.Zip(offsets, (range, offset) => $"{range.Name} {offset}"));
 
     public void Reset()
     {

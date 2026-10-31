@@ -20,11 +20,32 @@ public sealed class PreferencesTests : IDisposable
     }
 
     [Fact]
+    public void Power_options_and_calibrations_load_back()
+    {
+        var saved = new Preferences
+        {
+            SleepOnDisconnect = true,
+            IdlePowerOff = false,
+            Calibrations = new() { [0xC6A7C8D11AB1] = [156, 166, 192, 245, 326, 512, 819] },
+        };
+
+        new FilePreferencesStore(PreferencesFile).Save(saved);
+        var loaded = new FilePreferencesStore(PreferencesFile).Load();
+
+        Assert.True(loaded.SleepOnDisconnect);
+        Assert.False(loaded.IdlePowerOff);
+        Assert.Equal(saved.Calibrations[0xC6A7C8D11AB1], loaded.Calibrations![0xC6A7C8D11AB1]);
+    }
+
+    [Fact]
     public void Without_a_file_the_defaults_apply()
     {
         var loaded = new FilePreferencesStore(PreferencesFile).Load();
 
         Assert.Equal(new Preferences { LastScope = null, AutoConnect = true }, loaded);
+        Assert.False(loaded.SleepOnDisconnect);
+        Assert.True(loaded.IdlePowerOff);
+        Assert.Null(loaded.Calibrations);
     }
 
     [Fact]

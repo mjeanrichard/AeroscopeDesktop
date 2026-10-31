@@ -19,6 +19,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 {
     private const int MaxLogEntries = 2000;
 
+    private const string AsleepStatus = "Asleep: press the scope's button to wake it";
+
+    /// <summary>"ZZ" is never acknowledged: the scope drops the link instead (capture 31).</summary>
+    private static readonly TimeSpan SleepWriteTimeout = TimeSpan.FromSeconds(1);
+
     private readonly IScopeScanner _scanner;
     private readonly Func<ulong, Task<IScopeLink>> _connect;
     private readonly Action<Action> _post;
@@ -32,6 +37,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _autoConnectArmed;
 
     private IScopeLink? _connection;
+    private ulong _connectedAddress;
+
+    /// <summary>"ZZ" sent: the link dropping is expected, not a connection lost.</summary>
+    private bool _sleeping;
+
     private DateTimeOffset _lastDataReceived;
     private DateTimeOffset _frameStarted;
 
@@ -54,10 +64,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _preferencesStore = preferences;
         _preferences = preferences.Load();
         AutoConnect = _preferences.AutoConnect;
+        SleepOnDisconnect = _preferences.SleepOnDisconnect;
+        IdlePowerOff = _preferences.IdlePowerOff;
         _time = time ?? TimeProvider.System;
         Acquisition = new AcquisitionViewModel(
             (characteristic, payload) => WriteAsync(characteristic, payload, characteristic == AeroscopeGatt.ScopeState ? LogKind.State : LogKind.In),
-            _time);
+            _time)
+        {
+            IdlePowerOff = IdlePowerOff,
+        };
 
         DevicesView = CollectionViewSource.GetDefaultView(Devices);
         DevicesView.Filter = item => ShowAllDevices || ((DeviceItem)item).IsAeroscope;
@@ -98,7 +113,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(SendCommandCommand), nameof(SendCustomCommandCommand), nameof(SendSettingsCommand))]
-    [NotifyCanExecuteChangedFor(nameof(CalibrateCommand), nameof(ClearCalibrationCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CalibrateCommand), nameof(ClearCalibrationCommand), nameof(SleepCommand))]
     public partial ConnectionState State { get; set; }
 
     public bool IsDisconnected => State == ConnectionState.Disconnected;
@@ -109,6 +124,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Connect to the last scope as soon as it is in range (remembered between runs).</summary>
     [ObservableProperty]
     public partial bool AutoConnect { get; set; }
+
+    /// <summary>Put the scope into deep sleep when disconnecting or closing the app (remembered between runs).</summary>
+    [ObservableProperty]
+    public partial bool SleepOnDisconnect { get; set; }
+
+    /// <summary>Turn the FPGA off after a while stopped (remembered between runs).</summary>
+    [ObservableProperty]
+    public partial bool IdlePowerOff { get; set; }
 
     /// <summary>Raw data packets are many per frame, so they are only logged on request.</summary>
     [ObservableProperty]
@@ -131,6 +154,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (value)
         {
             LookForLastScope();
+        }
+    }
+
+    partial void OnSleepOnDisconnectChanged(bool value)
+    {
+        if (value != _preferences.SleepOnDisconnect)
+        {
+            SavePreferences(_preferences with { SleepOnDisconnect = value });
+        }
+    }
+
+    partial void OnIdlePowerOffChanged(bool value)
+    {
+        if (value != _preferences.IdlePowerOff)
+        {
+            SavePreferences(_preferences with { IdlePowerOff = value });
+            Acquisition.IdlePowerOff = value;
         }
     }
 
@@ -271,6 +311,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             connection.ConnectionChanged += (_, connected) => _post(() => OnConnectionChanged(connected));
             connection.Diagnostic += (_, message) => _post(() => AddLog(LogEntry.Message(LogKind.Error, message)));
             _connection = connection;
+            _connectedAddress = device.Address;
+            _sleeping = false;
             _frameAssembler.Reset();
             Scope.Reset();
 
@@ -305,16 +347,70 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private bool CanDisconnect() => State is ConnectionState.Connected or ConnectionState.Reconnecting;
 
+    /// <summary>Closes the link; with <see cref="SleepOnDisconnect"/>, puts the scope into deep sleep first.</summary>
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
-    private void Disconnect()
+    private async Task DisconnectAsync()
+    {
+        var sleep = SleepOnDisconnect && State == ConnectionState.Connected;
+        if (sleep)
+        {
+            await SendSleepAsync();
+        }
+
+        CloseConnection(sleep ? AsleepStatus : "Not connected");
+        AddLog(LogEntry.Message(LogKind.Info, sleep ? "Put the scope to sleep and disconnected" : "Disconnected"));
+    }
+
+    /// <summary>
+    /// Deep sleep ("ZZ"): the scope turns off and stops advertising until its button is pressed (or a charger
+    /// plugged in). With auto-connect on, the app reconnects as soon as it advertises again. Deep sleep erases
+    /// the scope's calibration; the app then applies the last one it reported.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsConnected))]
+    private async Task SleepAsync()
+    {
+        await SendSleepAsync();
+        CloseConnection(AsleepStatus);
+        AddLog(LogEntry.Message(LogKind.Info, "Put the scope to sleep; press its button to wake it"));
+
+        _autoConnectArmed = AutoConnect;
+        LookForLastScope();
+        Status = AsleepStatus;
+    }
+
+    /// <summary>
+    /// Sends "ZZ". The scope drops the link instead of acknowledging it (capture 31), so this waits at most
+    /// <see cref="SleepWriteTimeout"/> and doesn't report the write failing.
+    /// </summary>
+    private async Task SendSleepAsync()
+    {
+        _sleeping = true;
+        var packet = Packet("ZZ");
+        AddLog(LogEntry.Packet(LogKind.In, packet));
+        var write = _connection!.WriteAsync(AeroscopeGatt.ScopeIn, packet);
+        _ = write.ContinueWith(failed => failed.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        await Task.WhenAny(write, Task.Delay(SleepWriteTimeout, _time));
+    }
+
+    private void CloseConnection(string status)
     {
         _connection?.Dispose();
         _connection = null;
         Characteristics.Clear();
         Acquisition.OnDisconnected();
         State = ConnectionState.Disconnected;
-        Status = "Not connected";
-        AddLog(LogEntry.Message(LogKind.Info, "Disconnected"));
+        Status = status;
+        if (_sleeping)
+        {
+            Scope.Power = "Deep sleep";
+        }
+    }
+
+    private static byte[] Packet(string command)
+    {
+        var packet = new byte[AeroscopeGatt.PacketLength];
+        Encoding.ASCII.GetBytes(command).CopyTo(packet, 0);
+        return packet;
     }
 
     private bool IsConnected() => State == ConnectionState.Connected;
@@ -338,16 +434,61 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await Acquisition.StopCommand.ExecuteAsync(null);
         }
 
+        if (!await Acquisition.PowerUpAsync())
+        {
+            AddLog(LogEntry.Message(LogKind.Error, "The FPGA didn't turn on; not calibrating"));
+            return;
+        }
+
+        Acquisition.UseCalibration(null); // measure with the plain DAC; the scope applies the result itself
         Scope.CalibrationStarted();
         await SendCommandAsync("CF");
     }
 
-    /// <summary>Clears the stored calibration ("CX", which gets no reply), then asks for it to show the result.</summary>
+    /// <summary>
+    /// Clears the stored calibration ("CX", which gets no reply), and the app's copy, so nothing corrects the
+    /// zero any more; then asks for it to show the result.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(IsConnected))]
     private async Task ClearCalibrationAsync()
     {
+        if (_preferences.Calibrations?.ContainsKey(_connectedAddress) == true)
+        {
+            var calibrations = new Dictionary<ulong, short[]>(_preferences.Calibrations);
+            calibrations.Remove(_connectedAddress);
+            SavePreferences(_preferences with { Calibrations = calibrations });
+        }
+
         await SendCommandAsync("CX");
         await SendCommandAsync("QC");
+    }
+
+    /// <summary>
+    /// A calibration report (on connect, after calibrating or clearing). The app remembers a scope's
+    /// calibration, and applies it itself when the scope reports none: deep sleep erases it (capture 32)
+    /// and it can't be written back.
+    /// </summary>
+    private void OnCalibration(CalibrationMessage calibration)
+    {
+        if (calibration.IsCalibrated)
+        {
+            Acquisition.UseCalibration(null); // the scope applies its own
+            if (_preferences.Calibrations?.TryGetValue(_connectedAddress, out var known) != true || !known.SequenceEqual(calibration.Offsets))
+            {
+                var calibrations = new Dictionary<ulong, short[]>(_preferences.Calibrations ?? []) { [_connectedAddress] = calibration.Offsets };
+                SavePreferences(_preferences with { Calibrations = calibrations });
+            }
+        }
+        else if (_preferences.Calibrations?.TryGetValue(_connectedAddress, out var remembered) == true)
+        {
+            Acquisition.UseCalibration(remembered);
+            Scope.CalibrationRestored(remembered);
+            AddLog(LogEntry.Message(LogKind.Info, "The scope has lost its calibration; applying the last one it reported"));
+        }
+        else
+        {
+            Acquisition.UseCalibration(null);
+        }
     }
 
     /// <summary>Writes the FPGA registers for the current acquisition settings.</summary>
@@ -396,6 +537,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         else if (message is ButtonPressedMessage)
         {
             _ = Acquisition.OnButtonPressedAsync();
+        }
+        else if (message is CalibrationMessage calibration)
+        {
+            OnCalibration(calibration);
         }
     }
 
@@ -463,7 +608,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnConnectionChanged(bool connected)
     {
-        if (_connection is null)
+        if (_connection is null || _sleeping)
         {
             return;
         }
@@ -491,6 +636,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _scanner.Dispose();
+        if (SleepOnDisconnect && State == ConnectionState.Connected && _connection is not null)
+        {
+            // The app is closing: wait briefly here (on the UI thread, so not with SendSleepAsync,
+            // whose continuation needs it). The write fails when the scope drops the link.
+            try
+            {
+                _connection.WriteAsync(AeroscopeGatt.ScopeIn, Packet("ZZ")).Wait(SleepWriteTimeout);
+            }
+            catch (AggregateException)
+            {
+            }
+        }
+
         _connection?.Dispose();
     }
 

@@ -19,6 +19,9 @@ public partial class MainWindow : Window
 
     public static readonly RoutedUICommand ClearCalibration = new("C_lear calibration...", nameof(ClearCalibration), typeof(MainWindow));
 
+    /// <summary>Puts the scope into deep sleep after asking.</summary>
+    public static readonly RoutedUICommand Sleep = new("_Sleep...", nameof(Sleep), typeof(MainWindow));
+
     private readonly MainViewModel _viewModel = new();
     private readonly DispatcherTimer _progressTimer;
     private bool _scrollPending;
@@ -28,11 +31,20 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
 
-        // Moves the capture progress along between packets.
+        // Moves the capture progress along between packets, and turns the FPGA off when idle.
         _progressTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background,
-            (_, _) => _viewModel.Acquisition.UpdateProgress(), Dispatcher);
+            (_, _) => _viewModel.Acquisition.Tick(), Dispatcher);
 
         _viewModel.Log.CollectionChanged += OnLogChanged;
+
+        // Routed commands are only re-checked on input; the connection changes without any (auto-connect, waking).
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.State))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        };
         Loaded += (_, _) =>
         {
             _viewModel.Start();
@@ -75,6 +87,21 @@ public partial class MainWindow : Window
         if (answer == MessageBoxResult.OK)
         {
             _viewModel.ClearCalibrationCommand.Execute(null);
+        }
+    }
+
+    private void CanSleep(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _viewModel.SleepCommand.CanExecute(null);
+
+    private void OnSleep(object sender, ExecutedRoutedEventArgs e)
+    {
+        var answer = MessageBox.Show(this,
+            "The scope turns off and stops advertising until you press its button (or plug in a charger). " +
+            (_viewModel.AutoConnect ? "The app then reconnects by itself.\n\n" : "Then connect again.\n\n") +
+            "Deep sleep erases the scope's calibration; the app applies the last one it reported instead.",
+            "Sleep", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (answer == MessageBoxResult.OK)
+        {
+            _viewModel.SleepCommand.Execute(null);
         }
     }
 

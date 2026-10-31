@@ -100,6 +100,13 @@ internal static class SessionCommand
                 recorder.Comment($"TIMEOUT: {ex.Message}");
                 exitCode = 3;
             }
+            catch (Exception ex) when (ex is OperationCanceledException or ScopeConnectionException)
+            {
+                // The link is gone (ZZ drops it before acknowledging the write), so later steps can't run.
+                recorder.Comment($"WRITE FAILED: {ex.Message}");
+                exitCode = 4;
+                break;
+            }
         }
 
         recorder.Comment($"done: {recorder.OutPacketCount} Scope Out packet(s), {recorder.FrameCount} frame(s)");

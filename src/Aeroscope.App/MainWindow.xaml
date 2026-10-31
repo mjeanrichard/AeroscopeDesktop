@@ -116,6 +116,7 @@
         <CommandBinding Command="local:MainWindow.ShowConnection" Executed="OnShowConnection" />
         <CommandBinding Command="local:MainWindow.Calibrate" CanExecute="CanCalibrate" Executed="OnCalibrate" />
         <CommandBinding Command="local:MainWindow.ClearCalibration" CanExecute="CanClearCalibration" Executed="OnClearCalibration" />
+        <CommandBinding Command="local:MainWindow.Sleep" CanExecute="CanSleep" Executed="OnSleep" />
     </Window.CommandBindings>
 
     <DockPanel>
@@ -354,7 +355,7 @@
                                             </StackPanel>
                                         </Button>
                                     </Grid>
-                                    <TextBlock Text="{Binding RunMode}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+                                    <TextBlock Text="{Binding RunModeText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
                                 </StackPanel>
                             </Border>
 
@@ -563,8 +564,24 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                     <Button Content="Calibrate..." Command="local:MainWindow.Calibrate" />
                                     <Button Content="Clear..." Command="local:MainWindow.ClearCalibration"
-                                            ToolTip="Forget the stored calibration" />
+                                            ToolTip="Forget the stored calibration, also the app's copy" />
                                 </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Power" Style="{StaticResource CardHeader}" />
+                                <TextBlock Text="The scope never turns itself off. Deep sleep turns it off until its button is pressed or a charger is plugged in."
+                                           Style="{StaticResource Value}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Sleep..." Command="local:MainWindow.Sleep"
+                                            ToolTip="Deep sleep now; with auto-connect on, the app reconnects when you wake it" />
+                                </StackPanel>
+                                <CheckBox Content="Put the scope to sleep when disconnecting" IsChecked="{Binding SleepOnDisconnect}" Margin="0,8,0,0"
+                                          ToolTip="Also when closing the app. Press the scope's button to wake it." />
+                                <CheckBox Content="Turn the FPGA off after 5 minutes stopped" IsChecked="{Binding IdlePowerOff}" Margin="0,4,0,0"
+                                          ToolTip="Stays connected; Run then takes about 1.5 s longer to start." />
                             </StackPanel>
                         </Border>
                     </StackPanel>

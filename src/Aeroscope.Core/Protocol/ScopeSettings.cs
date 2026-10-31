@@ -50,11 +50,23 @@ public sealed record ScopeSettings
 
     public double OffsetVolts { get; init; }
 
-    public ushort OffsetDac
-        => (ushort)Math.Clamp(Math.Round(DacMidScale + OffsetVolts / Range.VoltsPerDacCount), DacLimit, ushort.MaxValue - DacLimit);
+    /// <summary>
+    /// Zero offsets in DAC counts per range (100 mV to 10 V, as <see cref="VoltageRange.All"/>) that the app
+    /// adds to the offset DAC itself, or null. Only for a scope that lost its calibration (deep sleep erases
+    /// it): a calibrated scope applies its offsets itself. Adding the remembered offsets reads 0 V where the
+    /// scope's own calibration does (capture 33).
+    /// </summary>
+    public IReadOnlyList<short>? CalibrationOffsets { get; init; }
 
-    /// <summary>The ADC code at which 0 V appears, given the DAC value actually sent.</summary>
-    public double ZeroCode => CentreCode - (OffsetDac - DacMidScale) / Range.DacCountsPerCode;
+    /// <summary>The DAC value for the offset alone: what the screen scaling is based on.</summary>
+    private double UncorrectedDac => Math.Clamp(Math.Round(DacMidScale + OffsetVolts / Range.VoltsPerDacCount), DacLimit, ushort.MaxValue - DacLimit);
+
+    /// <summary>The DAC value sent: the offset plus the app's calibration correction, if any.</summary>
+    public ushort OffsetDac
+        => (ushort)Math.Clamp(UncorrectedDac + (CalibrationOffsets?[Range.Index] ?? 0), DacLimit, ushort.MaxValue - DacLimit);
+
+    /// <summary>The ADC code at which 0 V appears; a calibration correction (the scope's or the app's) only cancels the zero error.</summary>
+    public double ZeroCode => CentreCode - (UncorrectedDac - DacMidScale) / Range.DacCountsPerCode;
 
     public byte TriggerLevelCode => (byte)Math.Clamp(Math.Round(ZeroCode + TriggerLevelVolts / Range.VoltsPerCode), 0, 255);
 

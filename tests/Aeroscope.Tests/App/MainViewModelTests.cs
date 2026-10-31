@@ -1,3 +1,4 @@
+using System.Text;
 using Aeroscope.App;
 using Aeroscope.App.ViewModels;
 using Aeroscope.Core.Bluetooth;
@@ -721,5 +722,195 @@ public class MainViewModelTests
 
         Assert.True(_scanner.IsDisposed);
         Assert.True(_link.IsDisposed);
+    }
+
+    // Deep sleep and power options
+
+    private const string AsleepStatus = "Asleep: press the scope's button to wake it";
+
+    /// <summary>The calibration the scope reported before deep sleep (capture 30): 100 mV 156 ... 1 V 245 ... 10 V 819.</summary>
+    private static readonly byte[] CalibratedReply = Captures.Packet("43 00 00 00 00 00 9C 00 A6 00 C0 00 F5 01 46 02 00 03 33");
+
+    private static readonly byte[] UncalibratedReply = Captures.Packet("43");
+
+    private static readonly byte[] SleepPacket = Captures.Packet("5A 5A");
+
+    [Fact]
+    public async Task Sleep_sends_zz_closes_the_link_and_reconnects_when_the_scope_advertises_again()
+    {
+        await ConnectToScopeAsync();
+
+        await _viewModel.SleepCommand.ExecuteAsync(null);
+
+        Assert.Equal(SleepPacket, Assert.Single(_link.Writes).Packet);
+        Assert.True(_link.IsDisposed);
+        Assert.Equal(ConnectionState.Disconnected, _viewModel.State);
+        Assert.Equal(AsleepStatus, _viewModel.Status);
+        Assert.Equal("Deep sleep", _viewModel.Scope.Power);
+        Assert.True(_viewModel.IsScanning); // auto-connect watches for it
+
+        // The button wakes it: it advertises again.
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress, "Aeroscope", -70, AdvertisesScopeService: true));
+
+        Assert.Equal([ScopeAddress, ScopeAddress], _connectedAddresses);
+        Assert.Equal(ConnectionState.Connected, _viewModel.State);
+    }
+
+    [Fact]
+    public async Task The_cancelled_zz_write_and_the_link_dropping_are_expected()
+    {
+        // Seen on the real scope (capture 31): the link drops and the write is cancelled.
+        await ConnectToScopeAsync();
+        _link.OnWrite = (link, _, _) => link.RaiseConnectionChanged(false);
+
+        await _viewModel.SleepCommand.ExecuteAsync(null);
+
+        Assert.Equal(AsleepStatus, _viewModel.Status);
+        Assert.DoesNotContain("Connection lost", LogTexts);
+
+        _link.OnWrite = null;
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress, "Aeroscope", -70, AdvertisesScopeService: true)); // woken
+        Assert.Equal(ConnectionState.Connected, _viewModel.State);
+        _link.WriteFailure = new OperationCanceledException("The operation was canceled.");
+
+        await _viewModel.SleepCommand.ExecuteAsync(null);
+
+        Assert.Equal(ConnectionState.Disconnected, _viewModel.State);
+        Assert.DoesNotContain(_viewModel.Log, e => e.Kind == LogKind.Error);
+    }
+
+    [Fact]
+    public async Task Disconnect_puts_the_scope_to_sleep_only_with_the_option()
+    {
+        await ConnectToScopeAsync();
+        await _viewModel.DisconnectCommand.ExecuteAsync(null);
+        Assert.Empty(_link.Writes);
+        Assert.Equal("Not connected", _viewModel.Status);
+
+        _viewModel.SleepOnDisconnect = true;
+        Assert.True(_preferences.Stored.SleepOnDisconnect);
+        await ConnectToScopeAsync();
+        await _viewModel.DisconnectCommand.ExecuteAsync(null);
+
+        Assert.Equal(SleepPacket, Assert.Single(_link.Writes).Packet);
+        Assert.Equal(AsleepStatus, _viewModel.Status);
+        Assert.Equal(ConnectionState.Disconnected, _viewModel.State);
+        Assert.False(_viewModel.IsScanning); // a disconnect doesn't reconnect by itself
+    }
+
+    [Fact]
+    public async Task Closing_the_app_survives_the_zz_write_failing()
+    {
+        _viewModel.SleepOnDisconnect = true;
+        await ConnectToScopeAsync();
+        _link.WriteFailure = new OperationCanceledException("The operation was canceled.");
+
+        _viewModel.Dispose();
+
+        Assert.True(_link.IsDisposed);
+    }
+
+    [Fact]
+    public async Task Closing_the_app_sends_zz_only_with_the_option()
+    {
+        await ConnectToScopeAsync();
+        _viewModel.Dispose();
+        Assert.Empty(_link.Writes);
+
+        var store = new FakePreferencesStore(new Preferences { SleepOnDisconnect = true });
+        var link = new FakeScopeLink();
+        var viewModel = new MainViewModel(_scanner, _ => Task.FromResult<IScopeLink>(link), action => action(), store);
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress, "Aeroscope", -68, AdvertisesScopeService: true));
+        viewModel.SelectedDevice = viewModel.Devices.Single();
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+        link.Writes.Clear();
+
+        viewModel.Dispose();
+
+        Assert.Equal(SleepPacket, Assert.Single(link.Writes).Packet);
+    }
+
+    [Fact]
+    public void Power_options_are_remembered()
+    {
+        var store = new FakePreferencesStore(new Preferences { SleepOnDisconnect = true, IdlePowerOff = false });
+        var viewModel = new MainViewModel(_scanner, ConnectAsync, action => action(), store);
+
+        Assert.True(viewModel.SleepOnDisconnect);
+        Assert.False(viewModel.IdlePowerOff);
+        Assert.False(viewModel.Acquisition.IdlePowerOff);
+        Assert.Equal(0, store.SaveCount);
+
+        viewModel.IdlePowerOff = true;
+        viewModel.SleepOnDisconnect = false;
+
+        Assert.True(store.Stored.IdlePowerOff);
+        Assert.False(store.Stored.SleepOnDisconnect);
+        Assert.True(viewModel.Acquisition.IdlePowerOff);
+    }
+
+    [Fact]
+    public async Task A_lost_calibration_is_applied_by_the_app_from_the_last_one_reported()
+    {
+        await ConnectToScopeAsync();
+        _link.RaiseOut(CalibratedReply);
+        Assert.Equal([156, 166, 192, 245, 326, 512, 819], _preferences.Stored.Calibrations![ScopeAddress]);
+
+        // Deep sleep, then the button: the scope comes back without its calibration (capture 32).
+        await _viewModel.SleepCommand.ExecuteAsync(null);
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress, "Aeroscope", -70, AdvertisesScopeService: true));
+        _link.RaiseOut(Captures.Packet("50 46")); // answer to QP
+        _link.Writes.Clear();
+
+        _link.RaiseOut(UncalibratedReply);
+
+        var write = Assert.Single(_link.Writes);
+        Assert.Equal(AeroscopeGatt.ScopeState, write.Characteristic);
+        Assert.Equal(0x8000 + 245, write.Packet[11] << 8 | write.Packet[12]); // 1 V/div
+        Assert.Equal("Lost by the scope, applied by the app: DAC offsets 100 mV 156, 200 mV 166, 500 mV 192, 1 V 245, 2 V 326, 5 V 512, 10 V 819",
+            _viewModel.Scope.Calibration);
+
+        // Calibrated again: the scope corrects itself, so the app stops adding its copy.
+        _link.RaiseOut(CalibratedReply);
+        Assert.Equal(0x8000, _link.Writes[^1].Packet[11] << 8 | _link.Writes[^1].Packet[12]);
+    }
+
+    [Fact]
+    public async Task Clearing_the_calibration_also_forgets_the_apps_copy()
+    {
+        await ConnectToScopeAsync();
+        _link.RaiseOut(Captures.Packet("50 46"));
+        _link.RaiseOut(CalibratedReply);
+        _link.Writes.Clear();
+
+        await _viewModel.ClearCalibrationCommand.ExecuteAsync(null);
+        _link.RaiseOut(UncalibratedReply);
+
+        Assert.Empty(_preferences.Stored.Calibrations!);
+        Assert.Equal("Not calibrated", _viewModel.Scope.Calibration);
+        Assert.DoesNotContain(_link.Writes, w => w.Characteristic == AeroscopeGatt.ScopeState);
+    }
+
+    [Fact]
+    public async Task Calibrating_turns_an_idle_fpga_on_first()
+    {
+        var clock = new ManualClock(DateTimeOffset.UnixEpoch);
+        var viewModel = new MainViewModel(_scanner, ConnectAsync, action => action(), _preferences, clock);
+        _scanner.RaiseAdvertisement(new ScopeAdvertisement(ScopeAddress, "Aeroscope", -68, AdvertisesScopeService: true));
+        viewModel.SelectedDevice = viewModel.Devices.Single();
+        await viewModel.ConnectCommand.ExecuteAsync(null);
+        _link.RaiseOut(Captures.Packet("50 46"));
+        clock.Advance(AcquisitionViewModel.IdlePowerOffDelay);
+        viewModel.Acquisition.Tick();
+        _link.RaiseOut(Captures.Packet("50 4F")); // the reply to "PO"
+        _link.Writes.Clear();
+
+        var calibrate = viewModel.CalibrateCommand.ExecuteAsync(null);
+        _link.RaiseOut(Captures.Packet("50 46"));
+        await calibrate;
+
+        Assert.Equal("PF", Encoding.ASCII.GetString(_link.Writes[0].Packet, 0, 2));
+        Assert.Equal(AeroscopeGatt.ScopeState, _link.Writes[1].Characteristic);
+        Assert.Equal(Captures.Packet("43 46"), _link.Writes[^1].Packet);
     }
 }

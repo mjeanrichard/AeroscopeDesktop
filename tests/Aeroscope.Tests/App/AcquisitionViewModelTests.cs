@@ -1215,4 +1215,158 @@ public class AcquisitionViewModelTests
         Assert.Equal(RunMode.Stopped, _viewModel.RunMode);
         Assert.False(_viewModel.SingleCommand.CanExecute(null));
     }
+
+    // Idle FPGA off and calibration correction
+
+    /// <summary>Ready with idle power off on, then stopped for the idle time: the FPGA is turned off and the scope has answered "PO".</summary>
+    private async Task FpgaOffAsync()
+    {
+        await MakeReadyAsync();
+        _viewModel.IdlePowerOff = true;
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay);
+        _viewModel.Tick();
+        await _viewModel.OnPowerChangedAsync(false); // the scope's "PO" reply (capture 29)
+        _writes.Clear();
+    }
+
+    [Fact]
+    public async Task The_fpga_is_turned_off_after_five_minutes_stopped()
+    {
+        await MakeReadyAsync();
+        _viewModel.IdlePowerOff = true;
+
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay - TimeSpan.FromSeconds(1));
+        _viewModel.Tick();
+        Assert.Empty(Commands);
+
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        _viewModel.Tick();
+        _viewModel.Tick();
+        Assert.Equal(["PO"], Commands);
+        Assert.True(_viewModel.IsFpgaOff);
+        Assert.Equal("Stopped, FPGA off to save power", _viewModel.RunModeText);
+
+        await _viewModel.OnPowerChangedAsync(false);
+        Assert.False(_viewModel.IsReady);
+        Assert.True(_viewModel.RunCommand.CanExecute(null)); // Run turns it back on
+        Assert.True(_viewModel.SingleCommand.CanExecute(null));
+        Assert.True(_viewModel.RunStopCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task The_fpga_stays_on_while_running_after_settings_changes_or_with_the_option_off()
+    {
+        await MakeReadyAsync();
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay);
+        _viewModel.Tick();
+        Assert.Empty(Commands); // option off
+
+        _viewModel.IdlePowerOff = true; // counts from now
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay / 2);
+        _viewModel.Range = VoltageRange.Range2V; // counts again
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay / 2);
+        _viewModel.Tick();
+        Assert.DoesNotContain("PO", Commands);
+
+        await _viewModel.RunCommand.ExecuteAsync(null);
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay * 2);
+        _viewModel.Tick();
+        Assert.DoesNotContain("PO", Commands);
+
+        await _viewModel.StopCommand.ExecuteAsync(null); // stopped counts from here
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay);
+        _viewModel.Tick();
+        Assert.Equal("PO", Commands.Last());
+    }
+
+    [Fact]
+    public async Task Run_with_the_fpga_off_turns_it_on_sends_the_settings_and_then_runs()
+    {
+        await FpgaOffAsync();
+
+        var run = _viewModel.RunCommand.ExecuteAsync(null);
+        Assert.Equal(["PF"], Commands);
+        Assert.True(_viewModel.IsPoweringUp);
+        Assert.Equal("Turning the FPGA on...", _viewModel.RunModeText);
+        Assert.Equal(RunMode.Stopped, _viewModel.RunMode);
+        Assert.False(_viewModel.RunCommand.CanExecute(null));
+
+        await _viewModel.OnPowerChangedAsync(true); // "PF" about 1.4 s later
+        await run;
+
+        // The FPGA lost its registers while off (capture 29): settings first, then one R.
+        Assert.Equal([AeroscopeGatt.ScopeIn, AeroscopeGatt.ScopeState, AeroscopeGatt.ScopeIn], _writes.Select(w => w.Characteristic));
+        Assert.Equal(["PF", "R"], Commands);
+        Assert.Equal(RunMode.Running, _viewModel.RunMode);
+        Assert.False(_viewModel.IsFpgaOff);
+        Assert.False(_viewModel.IsPoweringUp);
+        Assert.Equal("Running", _viewModel.RunModeText);
+    }
+
+    [Fact]
+    public async Task Single_and_the_device_button_also_turn_the_fpga_on_first()
+    {
+        await FpgaOffAsync();
+        var single = _viewModel.SingleCommand.ExecuteAsync(null);
+        await _viewModel.OnPowerChangedAsync(true);
+        await single;
+        Assert.Equal(["PF", "S", "X", "R"], Commands);
+        Assert.Equal(RunMode.Single, _viewModel.RunMode);
+
+        await _viewModel.StopCommand.ExecuteAsync(null);
+        _clock.Advance(AcquisitionViewModel.IdlePowerOffDelay);
+        _viewModel.Tick();
+        await _viewModel.OnPowerChangedAsync(false);
+        _writes.Clear();
+
+        var button = _viewModel.OnButtonPressedAsync();
+        await _viewModel.OnPowerChangedAsync(true);
+        await button;
+        Assert.Equal(["PF", "R"], Commands);
+        Assert.Equal(RunMode.Running, _viewModel.RunMode);
+    }
+
+    [Fact]
+    public async Task Settings_changed_while_the_fpga_is_off_are_sent_when_it_is_back_on()
+    {
+        await FpgaOffAsync();
+
+        _viewModel.Range = VoltageRange.Range5V;
+        Assert.Empty(SettingsWrites);
+
+        await _viewModel.OnPowerChangedAsync(true);
+        Assert.Equal(Captures.SettingsFrom(Assert.Single(SettingsWrites)).Range, VoltageRange.Range5V);
+    }
+
+    [Fact]
+    public async Task Disconnecting_while_powering_up_gives_up_without_running()
+    {
+        await FpgaOffAsync();
+        var run = _viewModel.RunCommand.ExecuteAsync(null);
+
+        _viewModel.OnDisconnected();
+        await run;
+
+        Assert.Equal(["PF"], Commands);
+        Assert.Equal(RunMode.Stopped, _viewModel.RunMode);
+        Assert.False(_viewModel.IsFpgaOff);
+        Assert.False(_viewModel.IsPoweringUp);
+    }
+
+    [Fact]
+    public async Task A_calibration_correction_moves_the_dac_sent_but_not_the_screen_scaling()
+    {
+        await MakeReadyAsync();
+        var zero = _viewModel.Settings.ZeroCode;
+
+        _viewModel.UseCalibration([156, 166, 192, 245, 326, 512, 819]);
+
+        var registers = Assert.Single(SettingsWrites);
+        Assert.Equal(0x80, registers[11]); // 0x8000 + 245 at 1 V/div
+        Assert.Equal(0xF5, registers[12]);
+        Assert.Equal(zero, _viewModel.Settings.ZeroCode);
+
+        _viewModel.UseCalibration(null);
+        Assert.Equal(0x00, SettingsWrites.Last()[12]);
+    }
 }

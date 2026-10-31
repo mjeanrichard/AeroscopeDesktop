@@ -121,6 +121,22 @@ public sealed class SessionCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_write_is_recorded_and_ends_the_session()
+    {
+        // Seen on the real scope: ZZ drops the link and the write is cancelled instead of acknowledged.
+        _link.WriteFailure = new OperationCanceledException("The operation was canceled.");
+
+        var exitCode = await RunAsync("ZZ", "QP");
+
+        Assert.Equal(4, exitCode);
+        var text = File.ReadAllText(_capturePath);
+        Assert.Contains("# step ZZ", text);
+        Assert.Contains("# WRITE FAILED: The operation was canceled.", text);
+        Assert.DoesNotContain("# step QP", text);
+        Assert.Contains("# done: 0 Scope Out packet(s), 0 frame(s)", text);
+    }
+
+    [Fact]
     public async Task Link_events_become_comments()
     {
         _link.OnWrite = (link, _, _) =>

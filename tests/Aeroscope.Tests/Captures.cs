@@ -124,6 +124,37 @@ internal static class Captures
     /// </summary>
     public const string CalibrationClear = "28-calibration-clear.txt";
 
+    /// <summary>
+    /// Calibrated, function generator at the probe: 2 frames (codes 94-158), then PO, answered at
+    /// once with "PO"; QP keeps answering "PO" and telemetry still works. Settings and R while off
+    /// are acknowledged but give no frames. PF answers "PF" 1.35 s later; R without new settings
+    /// then gives a partial frame and frames clipped at 0 and 255: the FPGA lost its registers.
+    /// </summary>
+    public const string FpgaOff = "29-fpga-off.txt";
+
+    /// <summary>As <see cref="FpgaOff"/>, but settings are written again after PF: frames read 94-158 as before.</summary>
+    public const string FpgaOffSettings = "30-fpga-off-settings.txt";
+
+    /// <summary>
+    /// ZZ (deep sleep): the link drops at once and the write is never acknowledged (it was cancelled,
+    /// which ended this probe run). A scan afterwards no longer found the scope.
+    /// </summary>
+    public const string DeepSleep = "31-deep-sleep.txt";
+
+    /// <summary>
+    /// After <see cref="DeepSleep"/> and one button press: the scope advertises again and connects,
+    /// but sends no PF by itself (20 s). QC answers zeros: deep sleep erased the calibration.
+    /// Frames work after settings and R (codes 106-170, the hum signal read uncalibrated).
+    /// </summary>
+    public const string Wake = "32-wake.txt";
+
+    /// <summary>
+    /// Probe tip shorted, uncalibrated after <see cref="Wake"/>. 1 V/div reads 138.5, and 126.3 with the
+    /// DAC raised by the remembered offset (0x8000 + 245). 100 mV/div reads 205, and 128.3 with
+    /// 0x8000 + 156. CF then calibrates (100 mV 158, 1 V 245) and both read 126.0-127.0 at 0x8000.
+    /// </summary>
+    public const string AppCalibration = "33-app-calibration.txt";
+
     /// <summary>QTI, QP, QVR, QC, QE and their replies.</summary>
     public const string Startup = "01-startup.txt";
 

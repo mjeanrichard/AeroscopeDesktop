@@ -22,6 +22,9 @@ public sealed record VoltageRange(string Name, byte FrontEndCode, double VoltsPe
     public static IReadOnlyList<VoltageRange> All { get; } =
         [Range100mV, Range200mV, Range500mV, Range1V, Range2V, Range5V, Range10V];
 
+    /// <summary>Position in <see cref="All"/>, the order the scope lists its calibration offsets in.</summary>
+    public int Index => All.TakeWhile(range => range != this).Count();
+
     public double VoltsPerCode => VoltsPerDivision * Divisions / 255;
 
     public double VoltsPerDacCount => VoltsPerCode / DacCountsPerCode;

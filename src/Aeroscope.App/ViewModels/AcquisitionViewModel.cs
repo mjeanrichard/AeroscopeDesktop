@@ -29,6 +29,16 @@ public partial class AcquisitionViewModel : ObservableObject
     /// <summary>Cycles shorter than this (several frames a second) get no progress indicator.</summary>
     private static readonly TimeSpan ProgressThreshold = TimeSpan.FromSeconds(0.5);
 
+    /// <summary>With <see cref="IdlePowerOff"/>, the FPGA is turned off after this long stopped.</summary>
+    public static readonly TimeSpan IdlePowerOffDelay = TimeSpan.FromMinutes(5);
+
+    /// <summary>The scope answers "PF" about 1.4 s after being told to power up (captures 29, 30).</summary>
+    private static readonly TimeSpan PowerUpTimeout = TimeSpan.FromSeconds(5);
+
+    private bool _idlePowerOff;
+    private DateTimeOffset _idleSince;
+    private TaskCompletionSource<bool>? _poweredUp;
+
     /// <param name="write">Writes a payload to a characteristic (Scope In or Scope State).</param>
     /// <param name="time">Clock for frame times; the system clock if null.</param>
     public AcquisitionViewModel(Func<ushort, byte[], Task> write, TimeProvider? time = null)
@@ -51,12 +61,41 @@ public partial class AcquisitionViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RunCommand), nameof(StopCommand), nameof(RunStopCommand), nameof(SingleCommand))]
     public partial bool IsReady { get; private set; }
 
+    /// <summary>The FPGA was turned off while idle ("PO"); Run, Single and calibrating turn it back on.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RunStopText))]
+    [NotifyPropertyChangedFor(nameof(RunModeText))]
+    [NotifyCanExecuteChangedFor(nameof(RunCommand), nameof(RunStopCommand), nameof(SingleCommand))]
+    public partial bool IsFpgaOff { get; private set; }
+
+    /// <summary>"PF" sent, waiting for the scope to report the FPGA ready.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RunModeText))]
+    [NotifyCanExecuteChangedFor(nameof(RunCommand), nameof(RunStopCommand), nameof(SingleCommand))]
+    public partial bool IsPoweringUp { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RunStopText), nameof(RunModeText))]
+    [NotifyCanExecuteChangedFor(nameof(RunStopCommand))]
     public partial RunMode RunMode { get; private set; }
 
     /// <summary>What <see cref="RunStopCommand"/> does next.</summary>
     public string RunStopText => RunMode == RunMode.Stopped ? "Run" : "Stop";
+
+    /// <summary>The run state under the Run button.</summary>
+    public string RunModeText => IsPoweringUp ? "Turning the FPGA on..." : IsFpgaOff ? "Stopped, FPGA off to save power" : RunMode.ToString();
+
+    /// <summary>Turn the FPGA off after <see cref="IdlePowerOffDelay"/> stopped (see <see cref="Tick"/>).</summary>
+    public bool IdlePowerOff
+    {
+        get => _idlePowerOff;
+        set
+        {
+            _idlePowerOff = value;
+            _idleSince = _time.GetUtcNow(); // count from now, not from when it was last stopped
+        }
+    }
+
+    partial void OnRunModeChanged(RunMode value) => _idleSince = _time.GetUtcNow();
 
     /// <summary>Running with a frame cycle long enough to be worth following.</summary>
     [ObservableProperty]
@@ -217,9 +256,19 @@ public partial class AcquisitionViewModel : ObservableObject
     [RelayCommand]
     private void TriggerLevelDown() => TriggerLevelVolts = ClampToScreen(Stepped(TriggerLevelVolts, -1));
 
-    [RelayCommand(CanExecute = nameof(IsReady))]
+    /// <summary>Ready, or the FPGA is off and can be turned on first.</summary>
+    private bool CanRun() => (IsReady || IsFpgaOff) && !IsPoweringUp;
+
+    private bool CanRunStop() => RunMode == RunMode.Stopped ? CanRun() : IsReady;
+
+    [RelayCommand(CanExecute = nameof(CanRun))]
     private async Task RunAsync()
     {
+        if (!await PowerUpAsync())
+        {
+            return;
+        }
+
         StartRecording();
         RunMode = RunMode.Running;
         await StartAcquisitionAsync();
@@ -233,7 +282,7 @@ public partial class AcquisitionViewModel : ObservableObject
     }
 
     /// <summary>One button for both: runs when stopped, stops a run or a single shot. The device button does the same.</summary>
-    [RelayCommand(CanExecute = nameof(IsReady))]
+    [RelayCommand(CanExecute = nameof(CanRunStop))]
     private Task RunStopAsync() => RunMode == RunMode.Stopped ? RunAsync() : StopAsync();
 
     /// <summary>
@@ -241,9 +290,14 @@ public partial class AcquisitionViewModel : ObservableObject
     /// run mode that stops after the first frame. Turn auto trigger off to wait for a real edge.
     /// In roll mode it stops when the screen is full.
     /// </summary>
-    [RelayCommand(CanExecute = nameof(IsReady))]
+    [RelayCommand(CanExecute = nameof(CanRun))]
     private async Task SingleAsync()
     {
+        if (!await PowerUpAsync())
+        {
+            return;
+        }
+
         await StopAcquisitionAsync();
         StartRecording();
         RunMode = RunMode.Single;
@@ -291,7 +345,54 @@ public partial class AcquisitionViewModel : ObservableObject
         UpdateProgress();
     }
 
-    /// <summary>Refreshes the progress indicator; call it a few times a second while running.</summary>
+    /// <summary>Call a few times a second: moves the progress indicator along and turns the FPGA off when idle.</summary>
+    public void Tick()
+    {
+        UpdateProgress();
+        if (IdlePowerOff && IsReady && RunMode == RunMode.Stopped && !IsFpgaOff && _time.GetUtcNow() - _idleSince >= IdlePowerOffDelay)
+        {
+            // The scope answers "PO" (capture 29), which makes it not ready; settings are then held back until "PF".
+            IsFpgaOff = true;
+            _ = SendAsync("PO");
+        }
+    }
+
+    /// <summary>
+    /// Turns the FPGA back on if it was turned off while idle, and waits until the scope reports it ready
+    /// and has the settings again (they are lost while it is off, capture 29). False if it didn't answer.
+    /// </summary>
+    public async Task<bool> PowerUpAsync()
+    {
+        if (!IsFpgaOff)
+        {
+            return true;
+        }
+
+        if (_poweredUp is null)
+        {
+            _poweredUp = new TaskCompletionSource<bool>();
+            IsPoweringUp = true;
+            await SendAsync("PF");
+        }
+
+        var poweredUp = _poweredUp.Task;
+        if (await Task.WhenAny(poweredUp, Task.Delay(PowerUpTimeout, _time)) == poweredUp)
+        {
+            return await poweredUp;
+        }
+
+        _poweredUp = null; // no answer: the next Run tries again
+        IsPoweringUp = false;
+        return false;
+    }
+
+    /// <summary>
+    /// Zero offsets the app adds to the offset DAC because the scope lost its calibration, or null when the
+    /// scope applies its own (see <see cref="ScopeSettings.CalibrationOffsets"/>).
+    /// </summary>
+    public void UseCalibration(IReadOnlyList<short>? offsets) => Update(Settings with { CalibrationOffsets = offsets });
+
+    /// <summary>Refreshes the progress indicator.</summary>
     public void UpdateProgress()
     {
         var status = _progress.At(_time.GetUtcNow());
@@ -312,7 +413,7 @@ public partial class AcquisitionViewModel : ObservableObject
     /// <summary>The device button toggles between running and stopped, as the spec asks. Each "BD" is one press (holding doesn't repeat).</summary>
     public async Task OnButtonPressedAsync()
     {
-        if (IsReady)
+        if (CanRunStop())
         {
             await RunStopAsync();
         }
@@ -327,17 +428,32 @@ public partial class AcquisitionViewModel : ObservableObject
             return;
         }
 
+        IsFpgaOff = false;
+        _idleSince = _time.GetUtcNow();
         await PushSettingsAsync();
         if (RunMode == RunMode.Running)
         {
             _roll.StartSegment(); // the link was down: leave a gap
             await StartAcquisitionAsync();
         }
+
+        // Last, so a Run waiting for this starts only now (and only once).
+        FinishPowerUp(true);
+    }
+
+    private void FinishPowerUp(bool poweredUp)
+    {
+        var waiting = _poweredUp;
+        _poweredUp = null;
+        IsPoweringUp = false;
+        waiting?.TrySetResult(poweredUp);
     }
 
     public void OnDisconnected()
     {
         IsReady = false;
+        IsFpgaOff = false;
+        FinishPowerUp(false);
         RunMode = RunMode.Stopped;
         _progress.Stopped();
         UpdateProgress();
@@ -352,6 +468,7 @@ public partial class AcquisitionViewModel : ObservableObject
 
         var viewChanged = settings.TimeBase != Settings.TimeBase || settings.FrameSize != Settings.FrameSize;
         Settings = settings;
+        _idleSince = _time.GetUtcNow();
         OnSettingsChanged(viewChanged);
 
         // Most displayed values derive from the settings; refresh them all.

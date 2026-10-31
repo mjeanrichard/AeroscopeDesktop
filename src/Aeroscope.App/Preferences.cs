@@ -11,6 +11,18 @@ public sealed record Preferences
 
     /// <summary>Connect to the last scope as soon as it is in range.</summary>
     public bool AutoConnect { get; init; } = true;
+
+    /// <summary>Put the scope into deep sleep ("ZZ") when disconnecting, also when the app closes.</summary>
+    public bool SleepOnDisconnect { get; init; }
+
+    /// <summary>Turn the scope's FPGA off ("PO") after a while stopped.</summary>
+    public bool IdlePowerOff { get; init; } = true;
+
+    /// <summary>
+    /// The last calibration each scope (by address) reported, DAC counts from 100 mV to 10 V. Deep sleep
+    /// erases a scope's calibration and it can't be written back, so the app applies these itself.
+    /// </summary>
+    public Dictionary<ulong, short[]>? Calibrations { get; init; }
 }
 
 public interface IPreferencesStore

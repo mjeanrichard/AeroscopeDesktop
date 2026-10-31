@@ -31,6 +31,67 @@
             <Setter Property="Margin" Value="0,1,12,1" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!-- A horizontal scroll bar that stays full size (the Fluent one shrinks to a thin line unless hovered):
+             a rounded track, clicking it pages, and a thumb that is as long as the part shown -->
+        <Style x:Key="PageTrack" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BarThumb" TargetType="Thumb">
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="Body" CornerRadius="5" Margin="0,2" Background="{DynamicResource ControlStrongFillColorDefaultBrush}" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Body" Property="Background" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Body" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="WideScrollBar" TargetType="ScrollBar">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border x:Name="Root" CornerRadius="7" Padding="2,0"
+                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource PageTrack}" Command="ScrollBar.PageLeftCommand" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource PageTrack}" Command="ScrollBar.PageRightCommand" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource BarThumb}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Window.CommandBindings>
@@ -179,7 +240,7 @@
                                          ToolTip="The whole frame cycle: the capture (from the time base and frame size, within about 0.3 s), then the transfer (by packets received)." />
                         </DockPanel>
                         <!-- Pans within a frame wider than the screen while zoomed in -->
-                        <ScrollBar DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0"
+                        <ScrollBar DockPanel.Dock="Bottom" Style="{StaticResource WideScrollBar}" Margin="0,4,0,0"
                                    Visibility="{Binding CanPan, Converter={StaticResource Visible}}"
                                    Minimum="0" Maximum="{Binding FramePanMaximum}" ViewportSize="{Binding FramePanViewport}"
                                    SmallChange="{Binding FramePanSmallChange}" LargeChange="{Binding FramePanViewport}"
@@ -209,7 +270,7 @@
                         <Button DockPanel.Dock="Right" Content="Live" Command="{Binding GoLiveCommand}" Margin="6,0,0,0"
                                 ToolTip="Follow the newest data" />
                         <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryText}" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0" />
-                        <ScrollBar Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
+                        <ScrollBar Style="{StaticResource WideScrollBar}" VerticalAlignment="Center" IsEnabled="{Binding HasHistory}"
                                    Minimum="0" Maximum="{Binding HistoryMaximum}" ViewportSize="{Binding HistoryViewport}"
                                    SmallChange="{Binding HistorySmallChange}" LargeChange="{Binding HistoryLargeChange}"
                                    Value="{Binding HistoryPosition}" />
